@@ -1,5 +1,5 @@
 # Visual-TSCSync-for-UEFI-Shell
-TSCSync - TimeStampCounter (TSC) synchronizer,  analysing System Timer characteristics
+TSCSync - TimeStampCounter (TSC) synchronizer,  analyze System Timer characteristics
 
 ## Intention
 Explore timer characteristics on current UEFI Personal Computer (PC) hardware.
