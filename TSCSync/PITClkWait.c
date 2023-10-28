@@ -26,53 +26,62 @@ Author:
 #include <conio.h>
 #include <intrin.h>
 
-int64_t PITClkWait/*pseudo delay upcount*/(uint32_t delay) {
 #define COUNTER_WIDTH 16
-//#define COUNTER_INIT  ((1 << COUNTER_WIDTH) - 1) & (uint32_t) - 5                       /* manipulate to random start counts */
-#define COUNTER_DELAY1_REMAINDER(d) (d & (1 << (COUNTER_WIDTH - 2)) - 1)
-#define COUNTER_DELAY2_REITERATER        (1 << (COUNTER_WIDTH - 2))
-#define COUNTER             pseudotimer & ((1 << COUNTER_WIDTH) - 1)
-    //#define COUNTER_ADVANCE     ++pseudotimer, pseudotimer &= ((1 << COUNTER_WIDTH) - 1)
-#define COUNTER_ADVANCE     pseudotimer += (0x7 & rand()), pseudotimer &= ((1 << COUNTER_WIDTH) - 1)
-#define COUNTER_OVFL_BIT    (COUNTER_WIDTH - 1)
-#define COUNTER_OVFL_VAL    (1 << COUNTER_OVFL_BIT)
-    ;
-    //uint16_t pseudotimer/* simulate the timer count*/ = COUNTER_INIT;
-    uint32_t turns = delay >> (COUNTER_WIDTH - 2);
-    uint32_t delay1 = COUNTER_DELAY1_REMAINDER(delay);  /* initial / remainder delay */
-    uint32_t delay2 = COUNTER_DELAY2_REITERATER;        /* repeated (WIDTH-2 ) delay */
-    uint32_t delay12 = delay1;                          /* first turn: delay1, second turn delay2 */
-    uint32_t ticks = 0;
-    uint32_t cnt = 0;
+__inline int32_t GetPITCount(void)
+{
+    uint32_t COUNTER_MASK = ((1 << COUNTER_WIDTH) - 1);
     uint8_t counterLoHi[2];
     uint16_t* pwCount = (uint16_t*)&counterLoHi[0];
+
+    outp(0x43, (2/*TIMER*/ << 6) + 0x0),                            // counter latch timer 2
+        counterLoHi[0] = (unsigned char)inp(0x40 + 2/*TIMER*/),     // get low byte
+        counterLoHi[1] = (unsigned char)inp(0x40 + 2/*TIMER*/);     // get high byte
+
+    return COUNTER_MASK & ~*pwCount;
+}
+
+int64_t PITClkWait/*pseudo delay upcount*/(int32_t Delay)
+{
+    int32_t delay = Delay / 3;
+    uint32_t COUNTER_MASK = ((1 << COUNTER_WIDTH) - 1);
+    uint32_t COUNTER_MASK2 = (((1 << COUNTER_WIDTH) - 1) / 2);
+
+    int32_t times = delay / COUNTER_MASK2;
+    int32_t remainder = delay % COUNTER_MASK2;
+
+    int32_t current = GetPITCount();
+    int32_t ticks = (remainder + current) - 1;
+
+    int32_t diff;
     uint64_t qwTSCStart, qwTSCEnd;
     size_t eflags = __readeflags();                     // save flaags
 
+    _disable();
+
     qwTSCStart = __rdtsc();                             // get TSC start
 
-    do 
+    do
     {
-        outp(0x43, (2/*TIMER*/ << 6) + 0x0);                            // counter latch timer 2
-        counterLoHi[0] = (unsigned char)inp(0x40 + 2/*TIMER*/);         // get low byte
-        counterLoHi[1] = (unsigned char)inp(0x40 + 2/*TIMER*/);         // get high byte
-
-        ticks = delay12 + (((1 << COUNTER_WIDTH) - 1) & ~*pwCount);
-        while (1) 
+        while (1)
         {
-            outp(0x43, (2/*TIMER*/ << 6) + 0x0);                        // counter latch timer 2
-            counterLoHi[0] = (unsigned char)inp(0x40 + 2/*TIMER*/);     // get low byte
-            counterLoHi[1] = (unsigned char)inp(0x40 + 2/*TIMER*/);     // get high byte
-            uint32_t diff = ticks - (((1 << COUNTER_WIDTH) - 1) & ~*pwCount);
+            diff = ticks - current;
 
-            if (diff & COUNTER_OVFL_VAL)
+            current = GetPITCount();
+
+            if (0 != (diff & (1 << (COUNTER_WIDTH - 1))))
+            {
+                if (diff > 0)
+                {
+                    diff -= COUNTER_MASK;
+                    diff = ((uint32_t)diff - 1);
+                }
                 break;
-            cnt++;
+            }
         }
-        
-        delay12 = delay2;
 
-    } while (turns-- > 0);
+        ticks = (COUNTER_MASK2 - 1 + diff + current);
+
+    } while (times-- > 0);
 
     qwTSCEnd = __rdtsc();                               // get TSC end ~50ms
 
@@ -82,6 +91,7 @@ int64_t PITClkWait/*pseudo delay upcount*/(uint32_t delay) {
     return (int64_t)(qwTSCEnd - qwTSCStart);
 }
 
+///////////////////////////////////////
 extern void _disable(void);
 extern void _enable(void);
 
