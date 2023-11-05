@@ -127,6 +127,9 @@ bool gfCfgMngMnuItm_Config_ACPIDelaySelect3 = false;// L"  ACPI:  363 *    9861 
 bool gfCfgMngMnuItm_Config_ACPIDelaySelect4 = false;// L"  ACPI: 6897 *     519 clocks = 173            * 3 " vs. L"* ACPI: 6897 *     519 clocks = 173            * 3 "
 bool gfCfgMngMnuItm_Config_ACPIDelaySelect5 = false;// L"  ACPI: 9861 *     363 clocks =        11*11   * 3 " vs. L"* ACPI: 9861 *     363 clocks =        11*11   * 3 "
 
+bool gfCfgMngMnuItm_Config_CalibMethodSelectTOROACPI = true;
+bool gfCfgMngMnuItm_Config_CalibMethodSelectI8254PIC = false;
+
 /////////////////////////////////////////////////////////////////////////////
 // global shared data
 /////////////////////////////////////////////////////////////////////////////
@@ -862,18 +865,30 @@ const wchar_t* wcsTimerDelayPicStrings[2][5] =
 const wchar_t* wcsTimerDelayAcpiStrings[2][5] =
 {
 	{
-		L"- Calibration Time: 1.0000 s  ",
-		L"- Calibration Time: 52.632 ms ",
-		L"- Calibration Time:  2.755 ms ",
-		L"- Calibration Time: 144.99 us ",
-		L"- Calibration Time: 101.41 us "
+		L"- Calibration Time: 1.0000 s    ",
+		L"- Calibration Time: 52.632 ms   ",
+		L"- Calibration Time:  2.755 ms   ",
+		L"- Calibration Time: 144.99 us   ",
+		L"- Calibration Time: 101.41 us   "
 	},
 	{
-		L"+ Calibration Time: 1.0000 s  ",
-		L"+ Calibration Time: 52.632 ms ",
-		L"+ Calibration Time:  2.755 ms ",
-		L"+ Calibration Time: 144.99 us ",
-		L"+ Calibration Time: 101.41 us "
+		L"+ Calibration Time: 1.0000 s    ",
+		L"+ Calibration Time: 52.632 ms   ",
+		L"+ Calibration Time:  2.755 ms   ",
+		L"+ Calibration Time: 144.99 us   ",
+		L"+ Calibration Time: 101.41 us   "
+	},
+};
+
+const wchar_t* wcsCalibMethod[2][2] =
+{
+	{
+		L"- Calibration Method: TIANO ACPI",
+		L"- Calibration Method: i8254 PIT ",
+	},
+	{
+		L"+ Calibration Method: TIANO ACPI",
+		L"+ Calibration Method: i8254 PIT ",
 	},
 };
 
@@ -882,6 +897,55 @@ int fnMnuItm_Config_ACPIDelaySelect2(CTextWindow* pThis, void* pContext, void* p
 int fnMnuItm_Config_ACPIDelaySelect3(CTextWindow* pThis, void* pContext, void* pParm) { CTextWindow* pRoot = pThis->TextWindowGetRoot(); char* pParmStr = (char*)pParm; menu_t* pMenu = (menu_t*)pContext; int nRet = 0; if (0 == strcmp("ENTER", pParmStr))pThis->TextClearWindow(pRoot->WinAtt); else { gfCfgMngMnuItm_Config_ACPIDelaySelect3 ^= 1;		pMenu->rgwcsMenuItem[2/* menu item 2 */] = (wchar_t*)(wcsTimerDelayAcpiStrings[gfCfgMngMnuItm_Config_ACPIDelaySelect3][2]); nRet = 1; }return nRet; }
 int fnMnuItm_Config_ACPIDelaySelect4(CTextWindow* pThis, void* pContext, void* pParm) { CTextWindow* pRoot = pThis->TextWindowGetRoot(); char* pParmStr = (char*)pParm; menu_t* pMenu = (menu_t*)pContext; int nRet = 0; if (0 == strcmp("ENTER", pParmStr))pThis->TextClearWindow(pRoot->WinAtt); else { gfCfgMngMnuItm_Config_ACPIDelaySelect4 ^= 1;		pMenu->rgwcsMenuItem[3/* menu item 3 */] = (wchar_t*)(wcsTimerDelayAcpiStrings[gfCfgMngMnuItm_Config_ACPIDelaySelect4][3]); nRet = 1; }return nRet; }
 int fnMnuItm_Config_ACPIDelaySelect5(CTextWindow* pThis, void* pContext, void* pParm) { CTextWindow* pRoot = pThis->TextWindowGetRoot(); char* pParmStr = (char*)pParm; menu_t* pMenu = (menu_t*)pContext; int nRet = 0; if (0 == strcmp("ENTER", pParmStr))pThis->TextClearWindow(pRoot->WinAtt); else { gfCfgMngMnuItm_Config_ACPIDelaySelect5 ^= 1;		pMenu->rgwcsMenuItem[4/* menu item 4 */] = (wchar_t*)(wcsTimerDelayAcpiStrings[gfCfgMngMnuItm_Config_ACPIDelaySelect5][4]); nRet = 1; }return nRet; }
+
+int fnMnuItm_Config_CalibMethodSelectTOROACPI(CTextWindow* pThis, void* pContext, void* pParm) 
+{ 
+	CTextWindow* pRoot = pThis->TextWindowGetRoot(); 
+	char* pParmStr = (char*)pParm; menu_t* pMenu = (menu_t*)pContext; 
+	int nRet = 0; 
+	
+	if (0 == strcmp("ENTER", pParmStr))
+		pThis->TextClearWindow(pRoot->WinAtt); 
+	else { 
+		//
+		// toggle selection of two (2)
+		// 	
+		gfCfgMngMnuItm_Config_CalibMethodSelectTOROACPI ^= 1,
+			gfCfgMngMnuItm_Config_CalibMethodSelectI8254PIC = !gfCfgMngMnuItm_Config_CalibMethodSelectTOROACPI;
+	
+		strcpy(gCfgStr_CalibrMethod, true == gfCfgMngMnuItm_Config_CalibMethodSelectTOROACPI ? "original TIANOCORE" : "native TSCSync PIT");
+		pfnDelay = true == gfCfgMngMnuItm_Config_CalibMethodSelectTOROACPI ? &InternalAcpiDelay : &PITClkWait;
+
+		pMenu->rgwcsMenuItem[8/* menu item 8 */] = (wchar_t*)(wcsCalibMethod[gfCfgMngMnuItm_Config_CalibMethodSelectTOROACPI][0]); 
+		pMenu->rgwcsMenuItem[9/* menu item 9 */] = (wchar_t*)(wcsCalibMethod[gfCfgMngMnuItm_Config_CalibMethodSelectI8254PIC][1]);
+		nRet = 1;
+	}
+	return nRet; 
+}
+
+int fnMnuItm_Config_CalibMethodSelectI8254PIC(CTextWindow* pThis, void* pContext, void* pParm) 
+{ 
+	CTextWindow* pRoot = pThis->TextWindowGetRoot(); 
+	char* pParmStr = (char*)pParm; 
+	menu_t* pMenu = (menu_t*)pContext; 
+	int nRet = 0; 
+	
+	if (0 == strcmp("ENTER", pParmStr))
+		pThis->TextClearWindow(pRoot->WinAtt); 
+	else { 
+
+		gfCfgMngMnuItm_Config_CalibMethodSelectI8254PIC ^= 1,
+			gfCfgMngMnuItm_Config_CalibMethodSelectTOROACPI = !gfCfgMngMnuItm_Config_CalibMethodSelectI8254PIC;
+		
+		strcpy(gCfgStr_CalibrMethod, true == gfCfgMngMnuItm_Config_CalibMethodSelectI8254PIC ? "native TSCSync PIT" : "original TIANOCORE");
+		pfnDelay = true == gfCfgMngMnuItm_Config_CalibMethodSelectI8254PIC ? &PITClkWait : &InternalAcpiDelay;
+
+		pMenu->rgwcsMenuItem[8/* menu item 8 */] = (wchar_t*)(wcsCalibMethod[gfCfgMngMnuItm_Config_CalibMethodSelectTOROACPI][0]);
+		pMenu->rgwcsMenuItem[9/* menu item 9 */] = (wchar_t*)(wcsCalibMethod[gfCfgMngMnuItm_Config_CalibMethodSelectI8254PIC][1]);
+		nRet = 1; 
+	}
+	return nRet; 
+}
 
 int gidxCfgMngMnuItm_Config_NumSamples = 0;		// index of selected NumSamples 0/1/2/3, saved at program exit
 
@@ -896,7 +960,7 @@ int fnMnuItm_NumSamples(CTextWindow* pThis, void* pContext, void* pParm)
 	CTextWindow* pRoot = pThis->TextWindowGetRoot();
 	CTextWindow* pSubMnuTextWindow = new CTextWindow(
 		pThis,
-		{ pThis->WinPos.X + pThis->WinDim.X,pThis->WinPos.Y + pThis->WinDim.Y - 3 },
+		{ pThis->WinPos.X + pThis->WinDim.X,pThis->WinPos.Y + pThis->WinDim.Y - 5 },
 		{ 10,6 },
 		EFI_BACKGROUND_CYAN | EFI_YELLOW);
 	menu_t* pMenu = (menu_t*)pContext;
@@ -1194,6 +1258,8 @@ int main(int argc, char** argv)
 				gfCfgMngMnuItm_Config_ACPIDelaySelect3  = %hhu\n\
 				gfCfgMngMnuItm_Config_ACPIDelaySelect4  = %hhu\n\
 				gfCfgMngMnuItm_Config_ACPIDelaySelect5  = %hhu\n\
+				gfCfgMngMnuItm_Config_CalibMethodSelectTOROACPI  = %hhu\n\
+				gfCfgMngMnuItm_Config_CalibMethodSelectI8254PIC  = %hhu\n\
 				gidxCfgMngMnuItm_Config_NumSamples = %d\n\
 				gCfgStr_File_SaveAs = %s",
 
@@ -1211,6 +1277,8 @@ int main(int argc, char** argv)
 				(char*)&gfCfgMngMnuItm_Config_ACPIDelaySelect3,
 				(char*)&gfCfgMngMnuItm_Config_ACPIDelaySelect4,
 				(char*)&gfCfgMngMnuItm_Config_ACPIDelaySelect5,
+				(char*)&gfCfgMngMnuItm_Config_CalibMethodSelectTOROACPI,
+				(char*)&gfCfgMngMnuItm_Config_CalibMethodSelectI8254PIC,
 
 				(int*)&gidxCfgMngMnuItm_Config_NumSamples,
 				&gCfgStr_File_SaveAs[0]
@@ -1317,16 +1385,25 @@ int main(int argc, char** argv)
 
             if (0 == _stricmp(strtmp2, "TIANO"))
             {
+				gfCfgMngMnuItm_Config_CalibMethodSelectTOROACPI = true;
+				gfCfgMngMnuItm_Config_CalibMethodSelectI8254PIC = false;
+
 				strcpy(gCfgStr_CalibrMethod, "default TIANOCORE ACPI");
 				pfnDelay = &InternalAcpiDelay;
             }
             else if (0 == _stricmp(strtmp2, "ACPI")) 
             {
+				gfCfgMngMnuItm_Config_CalibMethodSelectTOROACPI = false;
+				gfCfgMngMnuItm_Config_CalibMethodSelectI8254PIC = false;
+
 				strcpy(gCfgStr_CalibrMethod, "native TSCSync ACPI");
 				pfnDelay = &AcpiClkWait;
             }
 			else if (0 == _stricmp(strtmp2, "PIT"))
 			{
+				gfCfgMngMnuItm_Config_CalibMethodSelectTOROACPI = false;
+				gfCfgMngMnuItm_Config_CalibMethodSelectI8254PIC = true;
+
 				strcpy(gCfgStr_CalibrMethod, "native TSCSync PIT");
 				pfnDelay = &PITClkWait;
 			}
@@ -1478,7 +1555,7 @@ int main(int argc, char** argv)
 	{
 		char* pc = new char[256];
 		int* pi = new int(12345678);
-		static wchar_t wcsSeparator17[] = { BOXDRAW_HORIZONTAL,BOXDRAW_HORIZONTAL,BOXDRAW_HORIZONTAL,BOXDRAW_HORIZONTAL,BOXDRAW_HORIZONTAL,BOXDRAW_HORIZONTAL,BOXDRAW_HORIZONTAL,BOXDRAW_HORIZONTAL, BOXDRAW_HORIZONTAL, BOXDRAW_HORIZONTAL, BOXDRAW_HORIZONTAL, BOXDRAW_HORIZONTAL, BOXDRAW_HORIZONTAL, BOXDRAW_HORIZONTAL, BOXDRAW_HORIZONTAL, BOXDRAW_HORIZONTAL, '\0' };
+		static wchar_t wcsSeparator17[] = { BOXDRAW_HORIZONTAL,BOXDRAW_HORIZONTAL,BOXDRAW_HORIZONTAL,BOXDRAW_HORIZONTAL,BOXDRAW_HORIZONTAL,BOXDRAW_HORIZONTAL,BOXDRAW_HORIZONTAL,BOXDRAW_HORIZONTAL,BOXDRAW_HORIZONTAL,BOXDRAW_HORIZONTAL,BOXDRAW_HORIZONTAL,BOXDRAW_HORIZONTAL,BOXDRAW_HORIZONTAL,BOXDRAW_HORIZONTAL,BOXDRAW_HORIZONTAL,BOXDRAW_HORIZONTAL,BOXDRAW_HORIZONTAL, BOXDRAW_HORIZONTAL, BOXDRAW_HORIZONTAL, BOXDRAW_HORIZONTAL, BOXDRAW_HORIZONTAL, BOXDRAW_HORIZONTAL, BOXDRAW_HORIZONTAL, BOXDRAW_HORIZONTAL, BOXDRAW_HORIZONTAL, '\0' };
 
 		menu_t menu[] =
 		{
@@ -1486,7 +1563,7 @@ int main(int argc, char** argv)
 																								wcsSeparator17,
 																								L"Exit...                                ",
 																								L"Save and Exit...                       "},{&fnMnuItm_File_SaveAs, nullptr, &fnMnuItm_File_Exit,&fnMnuItm_File_SaveExit}},
-			{{ 8,0},	L" CONF ",	nullptr,{34,9	/* # menuitems + 2 */},	/*{false, false, true, false},*/
+			{{ 8,0},	L" CONF ",	nullptr,{36,12	/* # menuitems + 2 */},	/*{false, false, true, false},*/
 				{
 					/*index 3 */ wcsTimerDelayAcpiStrings[gfCfgMngMnuItm_Config_ACPIDelaySelect1][0],	/* selected by default menu strings */
 					/*index 4 */ wcsTimerDelayAcpiStrings[gfCfgMngMnuItm_Config_ACPIDelaySelect2][1],
@@ -1494,7 +1571,10 @@ int main(int argc, char** argv)
 					/*index 6 */ wcsTimerDelayAcpiStrings[gfCfgMngMnuItm_Config_ACPIDelaySelect4][3],
 					/*index 7 */ wcsTimerDelayAcpiStrings[gfCfgMngMnuItm_Config_ACPIDelaySelect5][4],
 					/*index 8 */ wcsSeparator17,
-					/*index 9 */ L"  NumSamples #              \x25BA  ",
+					/*index 9 */ L"  NumSamples #                \x25BA ",
+					/*index10 */ wcsSeparator17,
+					/*index11 */ wcsCalibMethod[gfCfgMngMnuItm_Config_CalibMethodSelectTOROACPI][0],
+					/*index12 */ wcsCalibMethod[gfCfgMngMnuItm_Config_CalibMethodSelectI8254PIC][1],
 				},
 				{
 					/*index 3 */ &fnMnuItm_Config_ACPIDelaySelect1,
@@ -1503,7 +1583,10 @@ int main(int argc, char** argv)
 					/*index 6 */ &fnMnuItm_Config_ACPIDelaySelect4,
 					/*index 7 */ &fnMnuItm_Config_ACPIDelaySelect5,
 					/*index 8 */ nullptr/* nullptr identifies SEPARATOR */,
-					/*index 9 */&fnMnuItm_NumSamples,
+					/*index 9 */ &fnMnuItm_NumSamples,
+					/*index10 */ nullptr/* nullptr identifies SEPARATOR */,
+					/*index11 */ &fnMnuItm_Config_CalibMethodSelectTOROACPI,
+					/*index12 */ &fnMnuItm_Config_CalibMethodSelectI8254PIC,
 					}
 				},
 			{{15,0},	L" RUN  ",		nullptr,{20,3/* # menuitems + 2 */},	/*{false, false},*/ {L"Run CONFIG      "},{&fnMnuItm_RunConfig_0}},
@@ -2065,23 +2148,24 @@ int main(int argc, char** argv)
 			fprintf(fp, "gfCfgMngMnuItm_View_Clock = %hhd\n\
 				gfCfgMngMnuItm_View_Calendar = %hhd\n\
 				gfCfgMngMnuItm_Config_PicApicSelect = %hhd\n\
-				gfCfgMngMnuItm_Config_PITDelaySelect1  = % hhd\n\
-				gfCfgMngMnuItm_Config_PITDelaySelect2  = % hhd\n\
-				gfCfgMngMnuItm_Config_PITDelaySelect3  = % hhd\n\
-				gfCfgMngMnuItm_Config_PITDelaySelect4  = % hhd\n\
-				gfCfgMngMnuItm_Config_PITDelaySelect5  = % hhd\n\
-				gfCfgMngMnuItm_Config_ACPIDelaySelect1 = % hhd\n\
-				gfCfgMngMnuItm_Config_ACPIDelaySelect2 = % hhd\n\
-				gfCfgMngMnuItm_Config_ACPIDelaySelect3 = % hhd\n\
-				gfCfgMngMnuItm_Config_ACPIDelaySelect4 = % hhd\n\
-				gfCfgMngMnuItm_Config_ACPIDelaySelect5 = % hhd\n\
+				gfCfgMngMnuItm_Config_PITDelaySelect1  = %hhd\n\
+				gfCfgMngMnuItm_Config_PITDelaySelect2  = %hhd\n\
+				gfCfgMngMnuItm_Config_PITDelaySelect3  = %hhd\n\
+				gfCfgMngMnuItm_Config_PITDelaySelect4  = %hhd\n\
+				gfCfgMngMnuItm_Config_PITDelaySelect5  = %hhd\n\
+				gfCfgMngMnuItm_Config_ACPIDelaySelect1 = %hhd\n\
+				gfCfgMngMnuItm_Config_ACPIDelaySelect2 = %hhd\n\
+				gfCfgMngMnuItm_Config_ACPIDelaySelect3 = %hhd\n\
+				gfCfgMngMnuItm_Config_ACPIDelaySelect4 = %hhd\n\
+				gfCfgMngMnuItm_Config_ACPIDelaySelect5 = %hhd\n\
+				gfCfgMngMnuItm_Config_CalibMethodSelectTOROACPI = %hhd\n\
+				gfCfgMngMnuItm_Config_CalibMethodSelectI8254PIC = %hhd\n\
 				gidxCfgMngMnuItm_Config_NumSamples = %d\n\
 				gCfgStr_File_SaveAs = %s\n",
 				
 				gfCfgMngMnuItm_View_Clock,
 				gfCfgMngMnuItm_View_Calendar,
 				gfCfgMngMnuItm_Config_PicApicSelect,
-
 				gfCfgMngMnuItm_Config_PITDelaySelect1 ,
 				gfCfgMngMnuItm_Config_PITDelaySelect2 ,
 				gfCfgMngMnuItm_Config_PITDelaySelect3 ,
@@ -2092,9 +2176,10 @@ int main(int argc, char** argv)
 				gfCfgMngMnuItm_Config_ACPIDelaySelect3,
 				gfCfgMngMnuItm_Config_ACPIDelaySelect4,
 				gfCfgMngMnuItm_Config_ACPIDelaySelect5,
-				
-				gidxCfgMngMnuItm_Config_NumSamples,
+				gfCfgMngMnuItm_Config_CalibMethodSelectTOROACPI,
+				gfCfgMngMnuItm_Config_CalibMethodSelectI8254PIC,
 
+				gidxCfgMngMnuItm_Config_NumSamples,
 				gCfgStr_File_SaveAs
 
 			);

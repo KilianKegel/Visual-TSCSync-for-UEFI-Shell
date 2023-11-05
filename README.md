@@ -46,6 +46,10 @@ This mode was made available to enable repeated .NSH/batch controlled
 Just watch the video: https://www.youtube.com/watch?v=hjeykqZqekc&t=27s
 
 ## Revision history
+### 20231105
+* improvement, *BETA RELEASE*
+* add **Calibration Method** for *PIT(i8254)* and *original tianocore* to CONFig menu
+  NOTE: the third method "ACPI" (that is my own calibration based on ACPI timer) can be selected via command line only
 ### 20231028
 * improvement, *BETA RELEASE*
 * add **/METHOD:TIANO/ACPI/PIT** to select ACPI/PIT(i8254) or original *tianocore* calibration method
