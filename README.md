@@ -54,6 +54,5 @@ Just watch the video: https://www.youtube.com/watch?v=hjeykqZqekc&t=27s
 * improvement, *BETA RELEASE*
 * add **/METHOD:TIANO/ACPI/PIT** to select ACPI/PIT(i8254) or original *tianocore* calibration method
 * CONFIG Menu shows true timing values, instead of ACPI clock numbers
-
 ### 20231015
 * initial revision, *ALPHA RELEASE*
