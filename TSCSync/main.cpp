@@ -108,6 +108,41 @@ extern void* rgcbAtUpdateParms[32][3];	// array of parameters: void* pThis, void
 
 int64_t gTSCPerSecondReference;	// initally taken from RTC UP flag 0x10 Reg 0xC
 
+static const char buildtimestamp[] =
+{
+    // YY year
+    __DATE__[9], __DATE__[10],
+
+    // First month letter, Oct Nov Dec = '1' otherwise '0'
+    (__DATE__[0] == 'O' || __DATE__[0] == 'N' || __DATE__[0] == 'D') ? '1' : '0',
+
+    // Second month letter
+    (__DATE__[0] == 'J') ? ((__DATE__[1] == 'a') ? '1' :       // Jan, Jun or Jul
+                             ((__DATE__[2] == 'n') ? '6' : '7')) :
+    (__DATE__[0] == 'F') ? '2' :                                // Feb 
+    (__DATE__[0] == 'M') ? (__DATE__[2] == 'r') ? '3' : '5' :   // Mar or May
+    (__DATE__[0] == 'A') ? (__DATE__[1] == 'p') ? '4' : '8' :   // Apr or Aug
+    (__DATE__[0] == 'S') ? '9' :                                // Sep
+    (__DATE__[0] == 'O') ? '0' :                                // Oct
+    (__DATE__[0] == 'N') ? '1' :                                // Nov
+    (__DATE__[0] == 'D') ? '2' :                                // Dec
+    0,
+
+    // First day letter, replace space with digit
+    __DATE__[4] == ' ' ? '0' : __DATE__[4],
+
+    // Second day letter
+    __DATE__[5],
+    __TIME__[0],
+    __TIME__[1],
+    __TIME__[0],
+    __TIME__[3],
+    __TIME__[4],
+
+   '\0'
+};
+char gstrBuildNum[16];
+
 /////////////////////////////////////////////////////////////////////////////
 // CONFIG menu functions and strings
 /////////////////////////////////////////////////////////////////////////////
@@ -127,8 +162,11 @@ bool gfCfgMngMnuItm_Config_ACPIDelaySelect3 = false;// L"  ACPI:  363 *    9861 
 bool gfCfgMngMnuItm_Config_ACPIDelaySelect4 = false;// L"  ACPI: 6897 *     519 clocks = 173            * 3 " vs. L"* ACPI: 6897 *     519 clocks = 173            * 3 "
 bool gfCfgMngMnuItm_Config_ACPIDelaySelect5 = false;// L"  ACPI: 9861 *     363 clocks =        11*11   * 3 " vs. L"* ACPI: 9861 *     363 clocks =        11*11   * 3 "
 
-bool gfCfgMngMnuItm_Config_CalibMethodSelectTOROACPI = true;
-bool gfCfgMngMnuItm_Config_CalibMethodSelectI8254PIC = false;
+bool gfCfgMngMnuItm_Config_CalibMethodSelectTIANOACPI = true;
+bool gfCfgMngMnuItm_Config_CalibMethodSelectTSCSYNCPIT = false;
+bool gfCfgMngMnuItm_Config_CalibMethodSelectTSCSYNCACPI = false;
+
+extern "C" int  gfErrorCorrection;
 
 /////////////////////////////////////////////////////////////////////////////
 // global shared data
@@ -145,7 +183,7 @@ char gstrCPUIDSig[32];
 char gstrCPUIDFam[32];
 char gstrCPUIDMod[32];
 char gstrCPUIDStp[32];
-char gstrCPUSpeed[32];
+char gstrCPUSpeed[48];
 extern "C" uint32_t gCOUNTER_WIDTH;
 
 int64_t(*pfnDelay)(uint32_t  Delay) = &InternalAcpiDelay;
@@ -163,7 +201,7 @@ static struct {
 	char szMultiplier[64];
 	uint32_t delay;
 	int64_t qwMultiplierToOneSecond;
-	int64_t(*pfnDelay)(uint32_t  Delay);
+	//int64_t(*pfnDelay)(uint32_t  Delay);
 	bool* pEna;
 	int64_t* rgDiffTSC;	    // equivalence of arrays and pointers
 	double* rgDriftSecPerDay;	// equivalence of arrays and pointers
@@ -172,18 +210,18 @@ static struct {
 	// ACPI
 	{
 		"1s","3579543","1",
-		3 * 1193181,1, pfnDelay, &gfCfgMngMnuItm_Config_ACPIDelaySelect1, &statbuf4DiffTSC[0 * MAXNUM], &statbuf4DriftSecPerDay[0 * MAXNUM]},
+		3 * 1193181,1, &gfCfgMngMnuItm_Config_ACPIDelaySelect1, &statbuf4DiffTSC[0 * MAXNUM], &statbuf4DriftSecPerDay[0 * MAXNUM]},
 	{	
 		"52.632ms","188397","19",
-		3 * 62799,19 , pfnDelay, &gfCfgMngMnuItm_Config_ACPIDelaySelect2, &statbuf4DiffTSC[1 * MAXNUM], &statbuf4DriftSecPerDay[1 * MAXNUM]},
+		3 * 62799,19 , &gfCfgMngMnuItm_Config_ACPIDelaySelect2, &statbuf4DiffTSC[1 * MAXNUM], &statbuf4DriftSecPerDay[1 * MAXNUM]},
 	{
 		" 2.755ms","29583","363",
-		3 * 3287,363 , pfnDelay, &gfCfgMngMnuItm_Config_ACPIDelaySelect3, &statbuf4DiffTSC[2 * MAXNUM], &statbuf4DriftSecPerDay[2 * MAXNUM]},
+		3 * 3287,363 , &gfCfgMngMnuItm_Config_ACPIDelaySelect3, &statbuf4DiffTSC[2 * MAXNUM], &statbuf4DriftSecPerDay[2 * MAXNUM]},
 	{
 		"144.99us","519","6897",
-		3 * 173,6897 , pfnDelay, &gfCfgMngMnuItm_Config_ACPIDelaySelect4, &statbuf4DiffTSC[3 * MAXNUM], &statbuf4DriftSecPerDay[3 * MAXNUM]},
+		3 * 173,6897 , &gfCfgMngMnuItm_Config_ACPIDelaySelect4, &statbuf4DiffTSC[3 * MAXNUM], &statbuf4DriftSecPerDay[3 * MAXNUM]},
 	{	"101.41us","363","9861",
-		3 * 121,9861 , pfnDelay, &gfCfgMngMnuItm_Config_ACPIDelaySelect5, &statbuf4DiffTSC[4 * MAXNUM], &statbuf4DriftSecPerDay[4 * MAXNUM]},
+		3 * 121,9861 , &gfCfgMngMnuItm_Config_ACPIDelaySelect5, &statbuf4DiffTSC[4 * MAXNUM], &statbuf4DriftSecPerDay[4 * MAXNUM]},
 };
 
 char gStatusStringColor = EFI_GREEN;
@@ -275,7 +313,7 @@ bool gfCfgMngMnuItm_View_Clock = true;
 bool gfCfgMngMnuItm_View_Calendar = true;
 char gCfgStr_File_SaveAs[256] = "default.xlsx";
 char gCfgStr_CalibrMethod[64] = "original TIANOCORE";
-bool gfCfgRefSyncRTC = false;	//false -> ACPI, true -> RTC
+int gfCfgSyncRef012 = 0;		//0 -> ACPI, 1 -> RTC, 2 -> PIT
 int  gnCfgRefSyncTime = 3;		//sync time/delay
 
 /////////////////////////////////////////////////////////////////////////////
@@ -539,9 +577,10 @@ int fnMnuItm_File_SaveAs(CTextWindow* pThis, void* pContext, void* pParm)
 				//sprintf(strtmp, "Stepping ID        : %s", gstrCPUIDStp), worksheet_write_string(worksheet, CELL("B12"), strtmp, bold);
 				sprintf(strtmp, "CPU Speed          : %s", gstrCPUSpeed), worksheet_write_string(worksheet, CELL("B10"), strtmp, bold);
 				sprintf(strtmp, "target .XLSX       : %s", gCfgStr_File_SaveAs), worksheet_write_string(worksheet, CELL("B11"), strtmp, bold);
-				sprintf(strtmp, "RefTimerDev        : %s", true == gfCfgRefSyncRTC ? "RTC" : "ACPI"), worksheet_write_string(worksheet, CELL("B12"), strtmp, bold);
+                sprintf(strtmp, "RefTimerDev        : %s", 2 == gfCfgSyncRef012 ? "PIT" : (1 == gfCfgSyncRef012 ? "RTC" : "ACPI")), worksheet_write_string(worksheet, CELL("B12"), strtmp, bold);//0 -> ACPI, 1 -> RTC, 2 -> PIT
 				sprintf(strtmp, "RefSyncTime        : %ds", gnCfgRefSyncTime), worksheet_write_string(worksheet, CELL("B13"), strtmp, bold);
 				sprintf(strtmp, "Calibration Method : %s", gCfgStr_CalibrMethod), worksheet_write_string(worksheet, CELL("B14"), strtmp, bold);
+                sprintf(strtmp, "Error correction   : %s", 0 == gfErrorCorrection ? "disabled" : (pfnDelay == &InternalAcpiDelay ? "N/A on TIANOCORE" : "enabled")), worksheet_write_string(worksheet, CELL("B15"), strtmp, bold);
 
 			}
 
@@ -622,7 +661,7 @@ int fnMnuItm_File_SaveAs(CTextWindow* pThis, void* pContext, void* pParm)
 
 				}
 				chart_title_set_name(chart, "Overall preview, drift in seconds per day. Parameter:\nCalibration time");
-				worksheet_insert_chart(worksheet, CELL("B15"), chart);
+				worksheet_insert_chart(worksheet, CELL("B16"), chart);
 			}
 
             //
@@ -798,9 +837,10 @@ int fnMnuItm_View_SysInfo(CTextWindow* pThis, void* pContext, void* pParm)
 		pRoot->TextPrint({ 2, 13 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "CPU Speed          : %s", gstrCPUSpeed);
 
 		pRoot->TextPrint({ 2, 15 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "target .XLSX       : %s", gCfgStr_File_SaveAs);
-		pRoot->TextPrint({ 2, 16 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "RefTimerDev        : %s", true == gfCfgRefSyncRTC ? "RTC" : "ACPI");
+        pRoot->TextPrint({ 2, 16 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "RefTimerDev        : %s", 2 == gfCfgSyncRef012 ? "PIT" : (1 == gfCfgSyncRef012 ? "RTC" : "ACPI"));//0 -> ACPI, 1 -> RTC, 2 -> PIT
 		pRoot->TextPrint({ 2, 17 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "RefSyncTime        : %ds", gnCfgRefSyncTime);
 		pRoot->TextPrint({ 2, 18 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "Calibration Method : %s", gCfgStr_CalibrMethod);
+        pRoot->TextPrint({ 2, 19 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "Error correction   : %s", 0 == gfErrorCorrection ? "disabled" : (pfnDelay == &InternalAcpiDelay ? "N/A on TIANOCORE" : "enabled"));
 	}
 	return 0;
 }
@@ -865,30 +905,45 @@ const wchar_t* wcsTimerDelayPicStrings[2][5] =
 const wchar_t* wcsTimerDelayAcpiStrings[2][5] =
 {
 	{
-		L"- Calibration Time: 1.0000 s    ",
-		L"- Calibration Time: 52.632 ms   ",
-		L"- Calibration Time:  2.755 ms   ",
-		L"- Calibration Time: 144.99 us   ",
-		L"- Calibration Time: 101.41 us   "
+		L"- Calibration Time: 1.0000 s      ",
+		L"- Calibration Time: 52.632 ms     ",
+		L"- Calibration Time:  2.755 ms     ",
+		L"- Calibration Time: 144.99 us     ",
+		L"- Calibration Time: 101.41 us     "
 	},
 	{
-		L"+ Calibration Time: 1.0000 s    ",
-		L"+ Calibration Time: 52.632 ms   ",
-		L"+ Calibration Time:  2.755 ms   ",
-		L"+ Calibration Time: 144.99 us   ",
-		L"+ Calibration Time: 101.41 us   "
+		L"+ Calibration Time: 1.0000 s      ",
+		L"+ Calibration Time: 52.632 ms     ",
+		L"+ Calibration Time:  2.755 ms     ",
+		L"+ Calibration Time: 144.99 us     ",
+		L"+ Calibration Time: 101.41 us     "
 	},
 };
 
-const wchar_t* wcsCalibMethod[2][2] =
+const wchar_t* wcsCalibMethod[2][3] =
 {
 	{
-		L"- Calibration Method: TIANO ACPI",
-		L"- Calibration Method: i8254 PIT ",
+		L"- Calibration Method:  TIANO  ACPI",
+		L"- Calibration Method: TSCSYNC PIT ",
+		L"- Calibration Method: TSCSYNC ACPI",
 	},
 	{
-		L"+ Calibration Method: TIANO ACPI",
-		L"+ Calibration Method: i8254 PIT ",
+		L"+ Calibration Method:  TIANO  ACPI",
+		L"+ Calibration Method: TSCSYNC PIT ",
+		L"+ Calibration Method: TSCSYNC ACPI",
+	},
+};
+
+const wchar_t* wcsErrorCorrection[3][1] =
+{
+	{
+		L"- Error Correction: disabled      ",
+	},
+	{
+		L"+ Error Correction: enabled       ",
+	},
+	{
+		L"  Error Correction: N/A for TIANO ",
 	},
 };
 
@@ -898,7 +953,25 @@ int fnMnuItm_Config_ACPIDelaySelect3(CTextWindow* pThis, void* pContext, void* p
 int fnMnuItm_Config_ACPIDelaySelect4(CTextWindow* pThis, void* pContext, void* pParm) { CTextWindow* pRoot = pThis->TextWindowGetRoot(); char* pParmStr = (char*)pParm; menu_t* pMenu = (menu_t*)pContext; int nRet = 0; if (0 == strcmp("ENTER", pParmStr))pThis->TextClearWindow(pRoot->WinAtt); else { gfCfgMngMnuItm_Config_ACPIDelaySelect4 ^= 1;		pMenu->rgwcsMenuItem[3/* menu item 3 */] = (wchar_t*)(wcsTimerDelayAcpiStrings[gfCfgMngMnuItm_Config_ACPIDelaySelect4][3]); nRet = 1; }return nRet; }
 int fnMnuItm_Config_ACPIDelaySelect5(CTextWindow* pThis, void* pContext, void* pParm) { CTextWindow* pRoot = pThis->TextWindowGetRoot(); char* pParmStr = (char*)pParm; menu_t* pMenu = (menu_t*)pContext; int nRet = 0; if (0 == strcmp("ENTER", pParmStr))pThis->TextClearWindow(pRoot->WinAtt); else { gfCfgMngMnuItm_Config_ACPIDelaySelect5 ^= 1;		pMenu->rgwcsMenuItem[4/* menu item 4 */] = (wchar_t*)(wcsTimerDelayAcpiStrings[gfCfgMngMnuItm_Config_ACPIDelaySelect5][4]); nRet = 1; }return nRet; }
 
-int fnMnuItm_Config_CalibMethodSelectTOROACPI(CTextWindow* pThis, void* pContext, void* pParm) 
+int fnMnuItm_Config_ErrorCorrection(CTextWindow* pThis, void* pContext, void* pParm)
+{
+	CTextWindow* pRoot = pThis->TextWindowGetRoot();
+	char* pParmStr = (char*)pParm;
+	menu_t* pMenu = (menu_t*)pContext;
+	int nRet = 0;
+
+	if (0 == strcmp("ENTER", pParmStr))
+		pThis->TextClearWindow(pRoot->WinAtt);
+	else {
+		gfErrorCorrection ^= true;
+
+		pMenu->rgwcsMenuItem[12/* menu item12 */] = (wchar_t*)(wcsErrorCorrection[pfnDelay == &InternalAcpiDelay ? 2/*"  Error Correction: N/A for TIANO "*/ : gfErrorCorrection][0]);
+		nRet = 1;
+	}
+	return nRet;
+}
+
+int fnMnuItm_Config_CalibMethodSelectTIANOACPI(CTextWindow* pThis, void* pContext, void* pParm)
 { 
 	CTextWindow* pRoot = pThis->TextWindowGetRoot(); 
 	char* pParmStr = (char*)pParm; menu_t* pMenu = (menu_t*)pContext; 
@@ -910,20 +983,28 @@ int fnMnuItm_Config_CalibMethodSelectTOROACPI(CTextWindow* pThis, void* pContext
 		//
 		// toggle selection of two (2)
 		// 	
-		gfCfgMngMnuItm_Config_CalibMethodSelectTOROACPI ^= 1,
-			gfCfgMngMnuItm_Config_CalibMethodSelectI8254PIC = !gfCfgMngMnuItm_Config_CalibMethodSelectTOROACPI;
-	
-		strcpy(gCfgStr_CalibrMethod, true == gfCfgMngMnuItm_Config_CalibMethodSelectTOROACPI ? "original TIANOCORE" : "native TSCSync PIT");
-		pfnDelay = true == gfCfgMngMnuItm_Config_CalibMethodSelectTOROACPI ? &InternalAcpiDelay : &PITClkWait;
+		gfCfgMngMnuItm_Config_CalibMethodSelectTIANOACPI = true,
+			gfCfgMngMnuItm_Config_CalibMethodSelectTSCSYNCPIT = false,
+			gfCfgMngMnuItm_Config_CalibMethodSelectTSCSYNCACPI = false,
 
-		pMenu->rgwcsMenuItem[8/* menu item 8 */] = (wchar_t*)(wcsCalibMethod[gfCfgMngMnuItm_Config_CalibMethodSelectTOROACPI][0]); 
-		pMenu->rgwcsMenuItem[9/* menu item 9 */] = (wchar_t*)(wcsCalibMethod[gfCfgMngMnuItm_Config_CalibMethodSelectI8254PIC][1]);
+		strcpy(gCfgStr_CalibrMethod, "original TIANOCORE");
+		pfnDelay = &InternalAcpiDelay;
+
+		pMenu->rgwcsMenuItem[8 /* menu item 8 */] = (wchar_t*)(wcsCalibMethod[gfCfgMngMnuItm_Config_CalibMethodSelectTIANOACPI][0]); 
+		pMenu->rgwcsMenuItem[9 /* menu item 9 */] = (wchar_t*)(wcsCalibMethod[gfCfgMngMnuItm_Config_CalibMethodSelectTSCSYNCPIT][1]);
+		pMenu->rgwcsMenuItem[10/* menu item10 */] = (wchar_t*)(wcsCalibMethod[gfCfgMngMnuItm_Config_CalibMethodSelectTSCSYNCACPI][2]);
+
+		pMenu->rgwcsMenuItem[12/* menu item12 */] = (wchar_t*)(wcsErrorCorrection[pfnDelay == &InternalAcpiDelay ? 2/*"  Error Correction: N/A for TIANO "*/ : gfErrorCorrection][0]);
+
+		pMenu->rgfnMnuItm[12] = nullptr;
+
+		nRet = 1;
 		nRet = 1;
 	}
 	return nRet; 
 }
 
-int fnMnuItm_Config_CalibMethodSelectI8254PIC(CTextWindow* pThis, void* pContext, void* pParm) 
+int fnMnuItm_Config_CalibMethodSelectTSCSYNCPIT(CTextWindow* pThis, void* pContext, void* pParm) 
 { 
 	CTextWindow* pRoot = pThis->TextWindowGetRoot(); 
 	char* pParmStr = (char*)pParm; 
@@ -934,17 +1015,56 @@ int fnMnuItm_Config_CalibMethodSelectI8254PIC(CTextWindow* pThis, void* pContext
 		pThis->TextClearWindow(pRoot->WinAtt); 
 	else { 
 
-		gfCfgMngMnuItm_Config_CalibMethodSelectI8254PIC ^= 1,
-			gfCfgMngMnuItm_Config_CalibMethodSelectTOROACPI = !gfCfgMngMnuItm_Config_CalibMethodSelectI8254PIC;
+		gfCfgMngMnuItm_Config_CalibMethodSelectTSCSYNCPIT = true,
+			gfCfgMngMnuItm_Config_CalibMethodSelectTIANOACPI = false,
+			gfCfgMngMnuItm_Config_CalibMethodSelectTSCSYNCACPI = false;
 		
-		strcpy(gCfgStr_CalibrMethod, true == gfCfgMngMnuItm_Config_CalibMethodSelectI8254PIC ? "native TSCSync PIT" : "original TIANOCORE");
-		pfnDelay = true == gfCfgMngMnuItm_Config_CalibMethodSelectI8254PIC ? &PITClkWait : &InternalAcpiDelay;
+		strcpy(gCfgStr_CalibrMethod, "native TSCSync i8254 PIT");
+		pfnDelay = &PITClkWait;
 
-		pMenu->rgwcsMenuItem[8/* menu item 8 */] = (wchar_t*)(wcsCalibMethod[gfCfgMngMnuItm_Config_CalibMethodSelectTOROACPI][0]);
-		pMenu->rgwcsMenuItem[9/* menu item 9 */] = (wchar_t*)(wcsCalibMethod[gfCfgMngMnuItm_Config_CalibMethodSelectI8254PIC][1]);
-		nRet = 1; 
+		pMenu->rgwcsMenuItem[8 /* menu item 8 */] = (wchar_t*)(wcsCalibMethod[gfCfgMngMnuItm_Config_CalibMethodSelectTIANOACPI][0]);
+		pMenu->rgwcsMenuItem[9 /* menu item 9 */] = (wchar_t*)(wcsCalibMethod[gfCfgMngMnuItm_Config_CalibMethodSelectTSCSYNCPIT][1]);
+		pMenu->rgwcsMenuItem[10/* menu item10 */] = (wchar_t*)(wcsCalibMethod[gfCfgMngMnuItm_Config_CalibMethodSelectTSCSYNCACPI][2]);
+
+		pMenu->rgwcsMenuItem[12/* menu item12 */] = (wchar_t*)(wcsErrorCorrection[pfnDelay == &InternalAcpiDelay ? 2/*"  Error Correction: N/A for TIANO "*/ : gfErrorCorrection][0]);
+		
+		pMenu->rgfnMnuItm[12] = &fnMnuItm_Config_ErrorCorrection;
+
+		nRet = 1;
 	}
 	return nRet; 
+}
+
+int fnMnuItm_Config_CalibMethodSelectTSCSYNCACPI(CTextWindow* pThis, void* pContext, void* pParm)
+{
+	CTextWindow* pRoot = pThis->TextWindowGetRoot();
+	char* pParmStr = (char*)pParm;
+	menu_t* pMenu = (menu_t*)pContext;
+	int nRet = 0;
+
+	if (0 == strcmp("ENTER", pParmStr))
+		pThis->TextClearWindow(pRoot->WinAtt);
+	else {
+
+		gfCfgMngMnuItm_Config_CalibMethodSelectTSCSYNCACPI = true,
+			gfCfgMngMnuItm_Config_CalibMethodSelectTIANOACPI = false,
+			gfCfgMngMnuItm_Config_CalibMethodSelectTSCSYNCPIT = false;
+
+		strcpy(gCfgStr_CalibrMethod, "native TSCSync ACPI");
+		pfnDelay = &AcpiClkWait;
+
+		pMenu->rgwcsMenuItem[8 /* menu item 8 */] = (wchar_t*)(wcsCalibMethod[gfCfgMngMnuItm_Config_CalibMethodSelectTIANOACPI][0]);
+		pMenu->rgwcsMenuItem[9 /* menu item 9 */] = (wchar_t*)(wcsCalibMethod[gfCfgMngMnuItm_Config_CalibMethodSelectTSCSYNCPIT][1]);
+		pMenu->rgwcsMenuItem[10/* menu item10 */] = (wchar_t*)(wcsCalibMethod[gfCfgMngMnuItm_Config_CalibMethodSelectTSCSYNCACPI][2]);
+
+		pMenu->rgwcsMenuItem[12/* menu item12 */] = (wchar_t*)(wcsErrorCorrection[pfnDelay == &InternalAcpiDelay ? 2/*"  Error Correction: N/A for TIANO "*/ : gfErrorCorrection][0]);
+
+		pMenu->rgfnMnuItm[12] = &fnMnuItm_Config_ErrorCorrection;
+
+		nRet = 1;
+
+	}
+	return nRet;
 }
 
 int gidxCfgMngMnuItm_Config_NumSamples = 0;		// index of selected NumSamples 0/1/2/3, saved at program exit
@@ -960,7 +1080,7 @@ int fnMnuItm_NumSamples(CTextWindow* pThis, void* pContext, void* pParm)
 	CTextWindow* pRoot = pThis->TextWindowGetRoot();
 	CTextWindow* pSubMnuTextWindow = new CTextWindow(
 		pThis,
-		{ pThis->WinPos.X + pThis->WinDim.X,pThis->WinPos.Y + pThis->WinDim.Y - 5 },
+		{ pThis->WinPos.X + pThis->WinDim.X,pThis->WinPos.Y + pThis->WinDim.Y - 8 },
 		{ 10,6 },
 		EFI_BACKGROUND_CYAN | EFI_YELLOW);
 	menu_t* pMenu = (menu_t*)pContext;
@@ -1068,26 +1188,30 @@ int fnMnuItm_About_0(CTextWindow* pThis, void* pContext, void* pParm)
 		BOXDRAW_VERTICAL,
 		nullptr
 	);
+    
+    if (1)
+    {
+        long long tsbld = 0;
+        sscanf(buildtimestamp, "%lld", &tsbld);
 
-	pAboutBox->TextPrint({ 3, 1 }, "TSCSYNC -- TimeStampCounter (TSC) synchronizer");
-	pAboutBox->TextPrint({ 3, 2 }, "  Analyzing System Timer characteristics");
-	pAboutBox->TextPrint({ 3, 3 }, "Copyright(c) 2023, Kilian Kegel");
-	pAboutBox->TextPrint({ 3, 5 }, "    Sample program to demonstrate for UEFI platforms:");
-	pAboutBox->TextPrint({ 3, 6 }, "      - data processing, logging, representation for laboratory");
-	pAboutBox->TextPrint({ 3, 7 }, "        applications");
-	pAboutBox->TextPrint({ 3, 8 }, "      - implementation of a simple menu driven user interface");
-	pAboutBox->TextPrint({ 3, 9 }, "      - integration of open source 3rd party libraries (ZLIB,");
-	pAboutBox->TextPrint({ 3,10 }, "        LIBXLSXWRITER)");
-	pAboutBox->TextPrint({ 3,11 }, "    Command line options:");
-	pAboutBox->TextPrint({ 3,12 }, "      /AUTORUN          - run, save and terminate previously configured");
-	pAboutBox->TextPrint({ 3,13 }, "                          session");
-	pAboutBox->TextPrint({ 3,14 }, "      /SYNCREF:RTC/ACPI - choose RTC/ACPI timer reference, (default ACPI)");
-	pAboutBox->TextPrint({ 3,15 }, "      /OUT:TIMING.XLSX  - assign filname of EXCEL logfile in .XLSX");
-	pAboutBox->TextPrint({ 3,16 }, "                          fileformat");
-    pAboutBox->TextPrint({ 3,17 }, "      /SYNCTIME:3       - choose 3s sync time, (default 1 second)");
-    pAboutBox->TextPrint({ 3,18 }, "      /METHOD:TIANO/ACPI/PIT - measurement algorithm (InternalAcpiDelay()");
-    pAboutBox->TextPrint({ 3,19 }, "                             or TSCSYNC-ACPI/-PIT i8254)");
+        pAboutBox->TextPrint({ 1, 1 }, " TSCSYNC -- TimeStampCounter (TSC) synchronizer, Build %llX",tsbld);
+        pAboutBox->TextPrint({ 1, 2 }, "  Analyzing System Timer characteristics, Copyright(c) 2023, Kilian Kegel");
+        pAboutBox->TextPrint({ 1, 4 }, "  Sample program to demonstrate for UEFI platforms:");
+        pAboutBox->TextPrint({ 1, 5 }, "    - data processing, logging, representation for laboratory applications");
+        pAboutBox->TextPrint({ 1, 6 }, "    - implementation of a simple menu driven user interface");
+        pAboutBox->TextPrint({ 1, 7 }, "    - integration of open source 3rd party libraries (ZLIB, LIBXLSXWRITER)");
+        pAboutBox->TextPrint({ 1, 9 }, "  Command line options:");
+        pAboutBox->TextPrint({ 1,10 }, "   /AUTORUN          - run, save and terminate previously configured session");
+        pAboutBox->TextPrint({ 1,11 }, "   /SYNCREF:<parm>   - choose RTC/ACPI timer reference, (default ACPI)");
+        pAboutBox->TextPrint({ 1,12 }, "   /SYNCTIME:<sec>   - choose 3s sync time, (default 1 second)");
+        pAboutBox->TextPrint({ 1,13 }, "   /OUT:<fname.xlsx> - assign filname of EXCEL logfile in .XLSX fileformat");
+        pAboutBox->TextPrint({ 1,14 }, "   /METHOD:<type>    - calibration method TIANO (InternalAcpiDelay()),");
+        pAboutBox->TextPrint({ 1,15 }, "                       ACPI (TSCSYNC-ACPI) or PIT (TSCSYNC-PIT-i8254)");
+        pAboutBox->TextPrint({ 1,16 }, "   /NUM:0/1/2/3      - number of samples 0: 10, 1: 50, 2: 250, 3: 1250");
+        pAboutBox->TextPrint({ 1,17 }, "   /ERRCODIS         - disable error correction of additionally gone through");
+	    pAboutBox->TextPrint({ 1,18 }, "                       counter ticks. N/A for TIANOCORE measurement method");
 
+    }
 	//RealTimeClock Analyser
 
 	for (TEXT_KEY key = NO_KEY; KEY_ESC != key && KEY_ENTER != key; key = pThis->TextGetKey(), pThis->TextWindowUpdateProgress())
@@ -1143,8 +1267,13 @@ int main(int argc, char** argv)
 
     if (0)
 	{
-		srand((unsigned)__rdtsc());
-		for (int j = 117; j <= 117; j++)
+        __debugbreak();
+
+        srand((unsigned)__rdtsc());
+        
+		pfnDelay = &PITClkWait;// InternalAcpiDelay;// PITClkWait;
+
+		for (int j = 123456; j <= 123456; j++)
 			for (int64_t i = 0, n; i < 10; i++)
 				n = (*pfnDelay)(j),
 				printf("%s-> %lld, %d\n",n != j ? "ERROR " : "OKAY  " ,n,j);
@@ -1174,8 +1303,8 @@ int main(int argc, char** argv)
     //
     _outp(0x61, 0);                          // stop counter
     _outp(0x43, (2/*TIMER*/ << 6) + 0x34);   // program timer 2 for MODE 2
-    _outp(0x42, 0xFF);                       // write counter value low 65535
-    _outp(0x42, 0xFF);                       // write counter value high 65535
+    _outp(0x42, 0x0);                       // write counter value low 65535
+    _outp(0x42, 0x0);                       // write counter value high 65535
     _outp(0x61, 1);                          // start counter
 
 
@@ -1216,25 +1345,6 @@ int main(int argc, char** argv)
 	}
 
 	//
-	//	determine processor speed within 250ms second
-	//
-	if (1)
-	{
-		char buffer[128] = "Determining processor speed ...";
-		//printf("%s", buffer);
-
-		clock_t endCLK = CLOCKS_PER_SEC / 4 + clock();
-		uint64_t endTSC, startTSC = __rdtsc();
-
-		while (endCLK > clock())
-			;
-		endTSC = __rdtsc();
-
-		sprintf(buffer, "%lld", 4 * (endTSC - startTSC));
-
-		sprintf(gstrCPUSpeed,"%c.%c%cGHz", buffer[0], buffer[1], buffer[2]);
-	}
-	//
 	// getting config data from 
 	//
 	if (1)
@@ -1258,10 +1368,12 @@ int main(int argc, char** argv)
 				gfCfgMngMnuItm_Config_ACPIDelaySelect3  = %hhu\n\
 				gfCfgMngMnuItm_Config_ACPIDelaySelect4  = %hhu\n\
 				gfCfgMngMnuItm_Config_ACPIDelaySelect5  = %hhu\n\
-				gfCfgMngMnuItm_Config_CalibMethodSelectTOROACPI  = %hhu\n\
-				gfCfgMngMnuItm_Config_CalibMethodSelectI8254PIC  = %hhu\n\
+				gfCfgMngMnuItm_Config_CalibMethodSelectTIANOACPI  = %hhu\n\
+				gfCfgMngMnuItm_Config_CalibMethodSelectTSCSYNCPIT  = %hhu\n\
+				gfCfgMngMnuItm_Config_CalibMethodSelectTSCSYNCACPI  = %hhu\n\
 				gidxCfgMngMnuItm_Config_NumSamples = %d\n\
-				gCfgStr_File_SaveAs = %s",
+				gCfgStr_File_SaveAs = %s\n\
+				gfErrorCorrection = %hhu\n",
 
 				(char*)&gfCfgMngMnuItm_View_Clock,
 				(char*)&gfCfgMngMnuItm_View_Calendar,
@@ -1277,11 +1389,13 @@ int main(int argc, char** argv)
 				(char*)&gfCfgMngMnuItm_Config_ACPIDelaySelect3,
 				(char*)&gfCfgMngMnuItm_Config_ACPIDelaySelect4,
 				(char*)&gfCfgMngMnuItm_Config_ACPIDelaySelect5,
-				(char*)&gfCfgMngMnuItm_Config_CalibMethodSelectTOROACPI,
-				(char*)&gfCfgMngMnuItm_Config_CalibMethodSelectI8254PIC,
+				(char*)&gfCfgMngMnuItm_Config_CalibMethodSelectTIANOACPI,
+				(char*)&gfCfgMngMnuItm_Config_CalibMethodSelectTSCSYNCPIT,
+                (char*)&gfCfgMngMnuItm_Config_CalibMethodSelectTSCSYNCACPI,
 
 				(int*)&gidxCfgMngMnuItm_Config_NumSamples,
-				&gCfgStr_File_SaveAs[0]
+				&gCfgStr_File_SaveAs[0],
+				&gfErrorCorrection
 			);
 
 		}
@@ -1299,22 +1413,51 @@ int main(int argc, char** argv)
 			|| 0 == _strnicmp(argv[arg], "-h", strlen("-h"))
 			)
 		{   //      |------------------------------------------------------------------------------|
-			printf("\nTSCSYNC -- TimeStampCounter (TSC) synchronizer\n  Analysing System Timer characteristics\nCopyright (c) 2023, Kilian Kegel\n\n");
-			printf("    Sample program to demonstrate for UEFI platforms:\n");
-			printf("      - data processing, logging, representation for laboratory applications\n");
-			printf("      - implementation of a simple menu driven user interface\n");
-			printf("      - integration of open source 3rd party libraries (ZLIB, LIBXLSXWRITER)\n\n");
-			printf("    Command line options:\n");
-			printf("      /AUTORUN          - run, save and terminate previously configured session\n");
-			printf("      /SYNCREF:RTC/ACPI - choose RTC/ACPI timer reference, (default ACPI)\n");
-			printf("      /OUT:TIMING.XLSX  - assign filname of EXCEL logfile in .XLSX fileformat\n");
-			printf("      /SYNCTIME:3       - choose 3s sync time, (default 3 second)\n");
-			printf("      /METHOD:TIANO/ACPI/PIT - measurement algorithm (InternalAcpiDelay()\n");
-			printf("                               or TSCSYNC-ACPI/-PIT i8254)\n");
-			printf("      /TIMERWIDTH:24    - choose bit width of timer (default 24), don't use it\n");
-			printf("                          experimental only...\n");
+            long long tsbld = 0;
+            sscanf(buildtimestamp, "%lld", &tsbld);
+            printf("\nTSCSYNC -- TimeStampCounter (TSC) synchronizer, Build %llX\n  Analysing System Timer characteristics, Copyright (c) 2023, Kilian Kegel\n\n", tsbld);
+            printf("  Sample program to demonstrate for UEFI platforms:\n");
+            printf("    - data processing, logging, representation for laboratory applications\n");
+            printf("    - implementation of a simple menu driven user interface\n");
+            printf("    - integration of open source 3rd party libraries (ZLIB, LIBXLSXWRITER)\n\n");
+            printf("  Command line options:\n");
+            printf("   /AUTORUN          - run, save and terminate previously configured session\n");
+            printf("   /SYNCREF:<parm>   - choose RTC/ACPI timer reference, (default ACPI)\n");
+            printf("   /SYNCTIME:<sec>   - choose 3s sync time, (default 1 second)\n");
+            printf("   /OUT:<fname.xlsx> - assign filname of EXCEL logfile in .XLSX fileformat\n");
+            printf("   /METHOD:<type>    - calibration method TIANO (InternalAcpiDelay()),\n");
+            printf("                       ACPI (TSCSYNC-ACPI) or PIT (TSCSYNC-PIT-i8254)\n");
+            printf("   /NUM:0/1/2/3      - number of samples 0: 10, 1: 50, 2: 250, 3: 1250\n");
+            printf("   /ERRCODIS         - disable error correction of additionally gone through\n");
+            printf("                       counter ticks. N/A for TIANOCORE measurement method\n");
 			exit(0);
 		}
+
+        if (0 == _strnicmp(argv[arg], "/ERRCODIS", strlen("/ERRCODIS")))
+        {
+            gfErrorCorrection = false;
+        }
+
+
+        if (0 == _strnicmp(argv[arg], "/NUM", strlen("/NUM")))
+        {
+            char strtmp[8];
+            int t,num;
+            
+            t = sscanf(argv[arg], "%4s:%d", &strtmp, &num);
+
+            if (!(num >= 0 && num <= 3))
+                t = -1;
+
+            if (t != 2)
+            {
+                fprintf(stderr, "Parameter failure \"%s\", consider format: \"/NUM:<0/1/2/3>\"", argv[arg]);
+                exit(1);
+            }
+            
+            gidxCfgMngMnuItm_Config_NumSamples = num;
+        }
+
 		if (0 == _strnicmp(argv[arg], "/OUT", strlen("/OUT")))
 		{
 			char strtmp[8];
@@ -1345,9 +1488,11 @@ int main(int argc, char** argv)
 				fErr = true;
 
 			if (0 == _stricmp(strtmp2, "RTC"))
-				gfCfgRefSyncRTC = true;
+				gfCfgSyncRef012 = 1;
 			else if (0 == _stricmp(strtmp2, "ACPI"))
-				gfCfgRefSyncRTC = false;
+				gfCfgSyncRef012 = 0;
+			else if (0 == _stricmp(strtmp2, "PIT"))
+				gfCfgSyncRef012 = 2;
 			else
 				fErr = true;
 
@@ -1385,26 +1530,29 @@ int main(int argc, char** argv)
 
             if (0 == _stricmp(strtmp2, "TIANO"))
             {
-				gfCfgMngMnuItm_Config_CalibMethodSelectTOROACPI = true;
-				gfCfgMngMnuItm_Config_CalibMethodSelectI8254PIC = false;
+				gfCfgMngMnuItm_Config_CalibMethodSelectTIANOACPI = true;
+				gfCfgMngMnuItm_Config_CalibMethodSelectTSCSYNCPIT = false;
+                gfCfgMngMnuItm_Config_CalibMethodSelectTSCSYNCACPI = false;
 
-				strcpy(gCfgStr_CalibrMethod, "default TIANOCORE ACPI");
+				strcpy(gCfgStr_CalibrMethod, "original TIANOCORE");
 				pfnDelay = &InternalAcpiDelay;
             }
             else if (0 == _stricmp(strtmp2, "ACPI")) 
             {
-				gfCfgMngMnuItm_Config_CalibMethodSelectTOROACPI = false;
-				gfCfgMngMnuItm_Config_CalibMethodSelectI8254PIC = false;
+                gfCfgMngMnuItm_Config_CalibMethodSelectTIANOACPI = false;
+				gfCfgMngMnuItm_Config_CalibMethodSelectTSCSYNCPIT = false;
+                gfCfgMngMnuItm_Config_CalibMethodSelectTSCSYNCACPI = true;
 
 				strcpy(gCfgStr_CalibrMethod, "native TSCSync ACPI");
 				pfnDelay = &AcpiClkWait;
             }
 			else if (0 == _stricmp(strtmp2, "PIT"))
 			{
-				gfCfgMngMnuItm_Config_CalibMethodSelectTOROACPI = false;
-				gfCfgMngMnuItm_Config_CalibMethodSelectI8254PIC = true;
+				gfCfgMngMnuItm_Config_CalibMethodSelectTIANOACPI = false;
+				gfCfgMngMnuItm_Config_CalibMethodSelectTSCSYNCPIT = true;
+                gfCfgMngMnuItm_Config_CalibMethodSelectTSCSYNCACPI = false;
 
-				strcpy(gCfgStr_CalibrMethod, "native TSCSync PIT");
+				strcpy(gCfgStr_CalibrMethod, "native TSCSync i8254 PIT");
 				pfnDelay = &PITClkWait;
 			}
 			else
@@ -1432,6 +1580,28 @@ int main(int argc, char** argv)
         }
 
     }
+
+    //
+    // set initial calibration method
+    //
+    if (1)
+    {
+        if (true == gfCfgMngMnuItm_Config_CalibMethodSelectTIANOACPI && false == gfCfgMngMnuItm_Config_CalibMethodSelectTSCSYNCPIT)
+            strcpy(gCfgStr_CalibrMethod, "original TIANOCORE"),
+            pfnDelay = &InternalAcpiDelay;
+
+        if (false == gfCfgMngMnuItm_Config_CalibMethodSelectTIANOACPI && false == gfCfgMngMnuItm_Config_CalibMethodSelectTSCSYNCPIT)
+            strcpy(gCfgStr_CalibrMethod, "native TSCSync ACPI"),
+            pfnDelay = &AcpiClkWait;
+
+        if (false == gfCfgMngMnuItm_Config_CalibMethodSelectTIANOACPI && true == gfCfgMngMnuItm_Config_CalibMethodSelectTSCSYNCPIT)
+            strcpy(gCfgStr_CalibrMethod, "native TSCSync i8254 PIT"),
+            pfnDelay = &PITClkWait;
+
+        printf("Initial calibration Method: %s\n", gCfgStr_CalibrMethod);
+        
+    }
+
     //
     // record ACPI timer charcteristics
     //
@@ -1497,10 +1667,6 @@ int main(int argc, char** argv)
         printf("PIT  i8254 characteristic %8d consecutive reads: min %3lld, max %3lld, av %3lld\n", MAXNUM, min, max, sum / MAXNUM);
 
     }
-    //
-    // report settings
-    //
-    printf("Using \"%s\" measurement METHOD\n\n", pfnDelay == InternalAcpiDelay ? "original Tianoroe InternalAcpiDelay()" : (pfnDelay == PITClkWait ? "TSCSync PIT" : "TSCSync ACPI"));
 
     //
 	// wait reference sync
@@ -1514,8 +1680,10 @@ int main(int argc, char** argv)
 		//
 		// wait UP (update ended) interrupt flag to start on time https://www.nxp.com/docs/en/data-sheet/MC146818.pdf#page=16
 		// 
-		printf("%d seconds for ultra precise TSC calibration on %s... \n", SECONDS, true == gfCfgRefSyncRTC ? "RTC" : "ACPI Timer");
+		printf("%d seconds for ultra precise TSC calibration on %s... \n", SECONDS, 2 == gfCfgSyncRef012 ? "PIT" : (1 == gfCfgSyncRef012 ? "RTC" : "ACPI"));
 		qwTSCStart = 0;
+
+		_disable();
 
 		_outp(0x70, 0x0A);										// RTC Register A
 
@@ -1525,11 +1693,10 @@ int main(int argc, char** argv)
 			;
 		qwTSCStart = __rdtsc();									// get start TSC at falling edge
 
-		_disable();
 
 		for (int i = 0; i < 1; i++)
 		{
-			if (gfCfgRefSyncRTC) {
+			if (1 == gfCfgSyncRef012) {
 				sec = 1 + SECONDS;
 
 				for (int i = 0; i < SECONDS; i++)
@@ -1540,15 +1707,39 @@ int main(int argc, char** argv)
 						;
 				}
 				qwTSCEnd = __rdtsc();									// get end TSC
-			} else {//if (gfCfgRefSyncRTC) {
+			}
+			else if (0 == gfCfgSyncRef012) {
 				qwTSCEnd += AcpiClkWait(SECONDS * 3579543);				// this function returns the diff
+				qwTSCStart = 0;											// clear start
+			} else if (2 == gfCfgSyncRef012) {
+				qwTSCEnd += PITClkWait(SECONDS * 3579543);				// this function returns the diff
 				qwTSCStart = 0;											// clear start
 			}//if (gfCfgRefSyncRTC) {
 		}
 
 		gTSCPerSecondReference = (int64_t)((qwTSCEnd - qwTSCStart) / SECONDS);
 
-		printf("%s sync base: diff %lld\n", true == gfCfgRefSyncRTC ? "RTC" : "ACPI", (qwTSCEnd - qwTSCStart) / SECONDS);
+		printf("%s sync base: diff %lld\n", 2 == gfCfgSyncRef012 ? "PIT" : (1 == gfCfgSyncRef012 ? "RTC" : "ACPI"), (qwTSCEnd - qwTSCStart) / SECONDS);
+	}
+
+	//
+	//	determine processor speed within 250ms second
+	//
+	if (1)
+	{
+		char buffer[128] = "Determining processor speed ...";
+		//printf("%s", buffer);
+
+		clock_t endCLK = CLOCKS_PER_SEC / 4 + clock();
+		uint64_t endTSC, startTSC = __rdtsc();
+
+		while (endCLK > clock())
+			;
+		endTSC = __rdtsc();
+
+		sprintf(buffer, "%lld", 4 * (endTSC - startTSC));
+
+		sprintf(gstrCPUSpeed, "%c.%c%cGHz, %lldHz", buffer[0], buffer[1], buffer[2], gTSCPerSecondReference);
 	}
 
 	do
@@ -1563,7 +1754,7 @@ int main(int argc, char** argv)
 																								wcsSeparator17,
 																								L"Exit...                                ",
 																								L"Save and Exit...                       "},{&fnMnuItm_File_SaveAs, nullptr, &fnMnuItm_File_Exit,&fnMnuItm_File_SaveExit}},
-			{{ 8,0},	L" CONF ",	nullptr,{36,12	/* # menuitems + 2 */},	/*{false, false, true, false},*/
+			{{ 8,0},	L" CONF ",	nullptr,{38,15	/* # menuitems + 2 */},	/*{false, false, true, false},*/
 				{
 					/*index 3 */ wcsTimerDelayAcpiStrings[gfCfgMngMnuItm_Config_ACPIDelaySelect1][0],	/* selected by default menu strings */
 					/*index 4 */ wcsTimerDelayAcpiStrings[gfCfgMngMnuItm_Config_ACPIDelaySelect2][1],
@@ -1573,8 +1764,11 @@ int main(int argc, char** argv)
 					/*index 8 */ wcsSeparator17,
 					/*index 9 */ L"  NumSamples #                \x25BA ",
 					/*index10 */ wcsSeparator17,
-					/*index11 */ wcsCalibMethod[gfCfgMngMnuItm_Config_CalibMethodSelectTOROACPI][0],
-					/*index12 */ wcsCalibMethod[gfCfgMngMnuItm_Config_CalibMethodSelectI8254PIC][1],
+					/*index11 */ wcsCalibMethod[gfCfgMngMnuItm_Config_CalibMethodSelectTIANOACPI][0],
+					/*index12 */ wcsCalibMethod[gfCfgMngMnuItm_Config_CalibMethodSelectTSCSYNCPIT][1],
+					/*index13 */ wcsCalibMethod[gfCfgMngMnuItm_Config_CalibMethodSelectTSCSYNCACPI][2],
+					/*index10 */ wcsSeparator17,
+					/*index10 */ wcsErrorCorrection[pfnDelay == &InternalAcpiDelay ? 2 : gfErrorCorrection][0],
 				},
 				{
 					/*index 3 */ &fnMnuItm_Config_ACPIDelaySelect1,
@@ -1585,8 +1779,11 @@ int main(int argc, char** argv)
 					/*index 8 */ nullptr/* nullptr identifies SEPARATOR */,
 					/*index 9 */ &fnMnuItm_NumSamples,
 					/*index10 */ nullptr/* nullptr identifies SEPARATOR */,
-					/*index11 */ &fnMnuItm_Config_CalibMethodSelectTOROACPI,
-					/*index12 */ &fnMnuItm_Config_CalibMethodSelectI8254PIC,
+					/*index11 */ &fnMnuItm_Config_CalibMethodSelectTIANOACPI,
+					/*index12 */ &fnMnuItm_Config_CalibMethodSelectTSCSYNCPIT,
+					/*index13 */ &fnMnuItm_Config_CalibMethodSelectTSCSYNCACPI,
+					/*index10 */ nullptr/* nullptr identifies SEPARATOR */,
+					/*index10 */ gfCfgMngMnuItm_Config_CalibMethodSelectTIANOACPI ? nullptr : fnMnuItm_Config_ErrorCorrection/* nullptr identifies SEPARATOR */,
 					}
 				},
 			{{15,0},	L" RUN  ",		nullptr,{20,3/* # menuitems + 2 */},	/*{false, false},*/ {L"Run CONFIG      "},{&fnMnuItm_RunConfig_0}},
@@ -1672,9 +1869,10 @@ int main(int argc, char** argv)
 		FullScreen.TextPrint({ 2, 13 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "CPU Speed          : %s", gstrCPUSpeed);
 
 		FullScreen.TextPrint({ 2, 15 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "target .XLSX       : %s", gCfgStr_File_SaveAs);
-		FullScreen.TextPrint({ 2, 16 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "RefTimerDev        : %s", true == gfCfgRefSyncRTC ? "RTC" : "ACPI");
+		FullScreen.TextPrint({ 2, 16 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "RefTimerDev        : %s", 2 == gfCfgSyncRef012 ? "PIT" : (1 == gfCfgSyncRef012 ? "RTC" : "ACPI"));
 		FullScreen.TextPrint({ 2, 17 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "RefSyncTime        : %ds", gnCfgRefSyncTime);
 		FullScreen.TextPrint({ 2, 18 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "Calibration Method : %s", gCfgStr_CalibrMethod);
+        FullScreen.TextPrint({ 2, 19 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "Error correction   : %s", 0 == gfErrorCorrection ? "disabled" : (pfnDelay == &InternalAcpiDelay ? "N/A on TIANOCORE" : "enabled"));
 		
 		
 		if (true == gfAutoRun)
@@ -2038,7 +2236,22 @@ int main(int argc, char** argv)
 									uint64_t secondsold = 0;
 									for (int j = 0; j < cntSamples; j++)
 									{
-										parms[i].rgDiffTSC[j] = parms[i].pfnDelay(parms[i].delay);
+                                        //
+                                        // kgtest
+                                        //
+                                        //if (1) {
+                                        //    memset(curprevdiff, 0, sizeof(curprevdiff));//kgtest
+                                        //    iCPD = 0;//kgtest
+                                        //}
+
+										FullScreen.TextBlockDraw({ 2,2}, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "Additional ticks gone through: ");
+										parms[i].rgDiffTSC[j] = pfnDelay(parms[i].delay);
+
+                                        //
+                                        // kgtest
+                                        //
+                                        //if (1) {
+                                        //    char fname[16];
 
 										seconds = clock() / CLOCKS_PER_SEC;
 
@@ -2071,8 +2284,8 @@ int main(int argc, char** argv)
 								if (1) {
 									for (int j = 0; j < cntSamples; j++)
 									{
-										double dblTSC = parms[i].rgDiffTSC[j];
-										double dblScaled2EntireDay = (double)((dblTSC * parms[i].qwMultiplierToOneSecond - gTSCPerSecondReference) * 86400) / (double)gTSCPerSecondReference;
+										int64_t dblTSC = parms[i].rgDiffTSC[j];
+										double dblScaled2EntireDay = ((double)((dblTSC * parms[i].qwMultiplierToOneSecond - gTSCPerSecondReference) * 86400)) / (double)gTSCPerSecondReference;
 
 										parms[i].rgDriftSecPerDay[j] = (double)dblScaled2EntireDay;
 									}
@@ -2158,10 +2371,12 @@ int main(int argc, char** argv)
 				gfCfgMngMnuItm_Config_ACPIDelaySelect3 = %hhd\n\
 				gfCfgMngMnuItm_Config_ACPIDelaySelect4 = %hhd\n\
 				gfCfgMngMnuItm_Config_ACPIDelaySelect5 = %hhd\n\
-				gfCfgMngMnuItm_Config_CalibMethodSelectTOROACPI = %hhd\n\
-				gfCfgMngMnuItm_Config_CalibMethodSelectI8254PIC = %hhd\n\
+				gfCfgMngMnuItm_Config_CalibMethodSelectTIANOACPI = %hhd\n\
+				gfCfgMngMnuItm_Config_CalibMethodSelectTSCSYNCPIT = %hhd\n\
+				gfCfgMngMnuItm_Config_CalibMethodSelectTSCSYNCACPI = %hhd\n\
 				gidxCfgMngMnuItm_Config_NumSamples = %d\n\
-				gCfgStr_File_SaveAs = %s\n",
+				gCfgStr_File_SaveAs = %s\n\
+				gfErrorCorrection = %hhd\n",
 				
 				gfCfgMngMnuItm_View_Clock,
 				gfCfgMngMnuItm_View_Calendar,
@@ -2176,11 +2391,13 @@ int main(int argc, char** argv)
 				gfCfgMngMnuItm_Config_ACPIDelaySelect3,
 				gfCfgMngMnuItm_Config_ACPIDelaySelect4,
 				gfCfgMngMnuItm_Config_ACPIDelaySelect5,
-				gfCfgMngMnuItm_Config_CalibMethodSelectTOROACPI,
-				gfCfgMngMnuItm_Config_CalibMethodSelectI8254PIC,
+                gfCfgMngMnuItm_Config_CalibMethodSelectTIANOACPI,
+                gfCfgMngMnuItm_Config_CalibMethodSelectTSCSYNCPIT,
+                gfCfgMngMnuItm_Config_CalibMethodSelectTSCSYNCACPI,
 
 				gidxCfgMngMnuItm_Config_NumSamples,
-				gCfgStr_File_SaveAs
+				gCfgStr_File_SaveAs,
+				gfErrorCorrection
 
 			);
 			fclose(fp);

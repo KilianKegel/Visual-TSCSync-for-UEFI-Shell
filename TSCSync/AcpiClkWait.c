@@ -26,6 +26,8 @@ Author:
 #include <conio.h>
 #include <intrin.h>
 
+int gfErrorCorrection = 1;
+
 uint16_t gPmTmrBlkAddr;
 int32_t pseudotimer;
 int32_t pseudotimer2;
@@ -41,73 +43,75 @@ uint32_t gCOUNTER_WIDTH = 24;
 //#define COUNTER_OVFL_BIT    (gCOUNTER_WIDTH - 1)
 //#define COUNTER_OVFL_VAL    (1 << COUNTER_OVFL_BIT)
 
-int32_t GetACPICount(short p)
+unsigned GetACPICount(short p)
 {
-    uint32_t COUNTER_MASK = ((1 << gCOUNTER_WIDTH) - 1);
-    //int32_t inc =  3 & rand();
-    //
-    //pseudotimer += inc;
-    //pseudotimer2+= inc;
-
-    //pseudotimer = COUNTER;
-
-    //return pseudotimer;
-
-    return COUNTER_MASK & _inpd(p);
+    return _inpd(p);
 }
 
-int64_t AcpiClkWait/*pseudo delay upcount*/(int32_t delay) 
+int64_t AcpiClkWait/*pseudo delay upcount*/(int32_t Delay)
 {
-    uint32_t COUNTER_MASK = ((1 << gCOUNTER_WIDTH) - 1);
-    uint32_t COUNTER_MASK2 = (((1 << gCOUNTER_WIDTH) - 1) / 2);
-    //uint16_t pseudotimer/* simulate the timer count*/ = COUNTER_INIT;
-    int32_t times = delay / COUNTER_MASK2;
-    int32_t remainder = delay % COUNTER_MASK2;
-
-    int32_t current = GetACPICount(gPmTmrBlkAddr);
-    int32_t ticks = (remainder + current) - 1;
-
-    int32_t cntstart = pseudotimer2;
-    int32_t diff;
-    uint64_t qwTSCStart, qwTSCEnd;
+    static int cnt;
+    int64_t  count = Delay;
+    int64_t  qwTSCPerIntervall, qwTSCEnd, qwTSCStart;
     size_t eflags = __readeflags();                     // save flaags
 
     _disable();
+    GetACPICount(gPmTmrBlkAddr);
 
-    qwTSCStart = __rdtsc();                             // get TSC start
-    
-    do 
+    if (1)
     {
-        while (1) 
+        uint16_t previous, current, diff = 0;
+
+        previous = (uint16_t)GetACPICount(gPmTmrBlkAddr);
+        qwTSCStart = __rdtsc();                             // get TSC start
+
+        while (count > 0)
         {
-            diff = ticks - current;
+            current = (uint16_t)GetACPICount(gPmTmrBlkAddr);
 
-            current = GetACPICount(gPmTmrBlkAddr);
+            if (current >= previous)
+                diff = current - previous;
+            else
+                diff = ~(previous - current) + 1;       //diff = ~(previous - current) + 1;
 
-            if (0 != (diff & (1 << (gCOUNTER_WIDTH - 1))))
-            {
-                if (diff > 0) 
-                {
-                    diff -= COUNTER_MASK;
-                    diff = ((uint32_t)diff - 1);
-                }
+            previous = current;
 
-                break;
-            }
-            
+            count -= diff;
         }
 
-        ticks = (COUNTER_MASK2 - 1 + diff + current);
+        qwTSCEnd = __rdtsc();                                                   // get TSC end ~50ms
+        
+        printf("%lld       ", -count);                          // Additional ticks gone through: 
 
-    } while (times-- > 0);
+        //
+        // subtract the additional number of TSC gone through
+        //
+        //         TSCdiff          qwTSCPerIntervall
+        //     ---------------- == -------------------      ->
+        //      CLKWAIT - count        CLKWAIT
+        //
+        //
+        //                           TSCdiff * CLKWAIT
+        //      qwTSCPerIntervall = -------------------
+        //                            CLKWAIT - count
+        //
+        //          NOTE: "count" is negative. " - count " ADDs additional ticks gone through
+        //
+        if (1 == gfErrorCorrection)
+        {
+            qwTSCPerIntervall = ((qwTSCEnd - qwTSCStart) * Delay) / (Delay - count);
+        }
+        else {
+            qwTSCPerIntervall = qwTSCEnd - qwTSCStart;
+        }
 
-    qwTSCEnd = __rdtsc();                               // get TSC end ~50ms
+        if (0x200 & eflags)                                     // restore IF interrupt flag
+            _enable();
 
-    if (0x200 & eflags)                                 // restore IF interrupt flag
-        _enable();
-    //return pseudotimer2 - cntstart;
-    return (int64_t)(qwTSCEnd - qwTSCStart);
+    }
+    return (int64_t)qwTSCPerIntervall;
 }
+
 
 void PCIReset(void)
 {
@@ -162,7 +166,6 @@ int64_t InternalAcpiDelay(uint32_t  Delay)
     if (0x200 & eflags)                                 // restore IF interrupt flag
         _enable();
 
-//    return 0;
     return (int64_t)(qwTSCEnd - qwTSCStart);
 
 }

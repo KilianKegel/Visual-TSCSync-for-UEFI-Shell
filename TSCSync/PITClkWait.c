@@ -26,8 +26,19 @@ Author:
 #include <conio.h>
 #include <intrin.h>
 
+extern int gfErrorCorrection;
+
+//int iCPD;
+//typedef struct _CURPREVDIFF {
+//    uint32_t curr;
+//    uint32_t prev;
+//    uint32_t diff;
+//    int32_t delay;
+//}CURPREVDIFF;
+//CURPREVDIFF curprevdiff[65536];
+
 #define COUNTER_WIDTH 16
-__inline int32_t GetPITCount(void)
+__inline uint16_t GetPITCount(void)
 {
     uint32_t COUNTER_MASK = ((1 << COUNTER_WIDTH) - 1);
     uint8_t counterLoHi[2];
@@ -37,58 +48,79 @@ __inline int32_t GetPITCount(void)
         counterLoHi[0] = (unsigned char)inp(0x40 + 2/*TIMER*/),     // get low byte
         counterLoHi[1] = (unsigned char)inp(0x40 + 2/*TIMER*/);     // get high byte
 
-    return COUNTER_MASK & ~*pwCount;
+    return *pwCount;
+    //return COUNTER_MASK & ~*pwCount;
 }
 
 int64_t PITClkWait/*pseudo delay upcount*/(int32_t Delay)
 {
-    int32_t delay = Delay / 3;
-    uint32_t COUNTER_MASK = ((1 << COUNTER_WIDTH) - 1);
-    uint32_t COUNTER_MASK2 = (((1 << COUNTER_WIDTH) - 1) / 2);
-
-    int32_t times = delay / COUNTER_MASK2;
-    int32_t remainder = delay % COUNTER_MASK2;
-
-    int32_t current = GetPITCount();
-    int32_t ticks = (remainder + current) - 1;
-
-    int32_t diff;
-    uint64_t qwTSCStart, qwTSCEnd;
+    static int cnt;
+    int64_t  delay3 = Delay / 3, count = delay3, maxdrift = 0;
+    uint64_t qwTSCPerIntervall, qwTSCEnd, qwTSCStart;
     size_t eflags = __readeflags();                     // save flaags
+    int syncprogress = 1;
 
     _disable();
+    GetPITCount();
 
-    qwTSCStart = __rdtsc();                             // get TSC start
-
-    do
+    if (1)
     {
-        while (1)
+        uint16_t previous,current,diff = 0;
+
+        while (syncprogress)
         {
-            diff = ticks - current;
-
-            current = GetPITCount();
-
-            if (0 != (diff & (1 << (COUNTER_WIDTH - 1))))
+            for (int i = 0; i < 5 && syncprogress; i++)
             {
-                if (diff > 0)
+                count = delay3 = Delay / 3;
+                previous = GetPITCount();
+                qwTSCStart = __rdtsc();                             // get TSC start
+
+                while (count > 0)
                 {
-                    diff -= COUNTER_MASK;
-                    diff = ((uint32_t)diff - 1);
+                    current = GetPITCount();
+
+                    if (previous >= current)
+                        diff = previous - current;
+                    else
+                        diff = ~(current - previous) + 1;
+
+                    //curprevdiff[iCPD].diff = diff;//kgtest
+                    //curprevdiff[iCPD].curr = current;//kgtest
+                    //curprevdiff[iCPD].prev = previous;//kgtest
+
+                    previous = current;
+
+                    count -= diff;
+
+                    //curprevdiff[iCPD++].delay = delay;//kgtest
+
                 }
-                break;
+
+                qwTSCEnd = __rdtsc();                           // get TSC end ~50ms
+
+                //if ((count + maxdrift) >= 0)
+                //{
+                    syncprogress = 0;
+                    break;
+                //}
             }
+            maxdrift++;
         }
+        printf("%lld       ", -count);                          // Additional ticks gone through: 
 
-        ticks = (COUNTER_MASK2 - 1 + diff + current);
+        //
+        // subtract the additional number of TSC gone through
+        //
+        if (1 == gfErrorCorrection)
+            qwTSCPerIntervall = ((qwTSCEnd - qwTSCStart) * delay3) / (delay3 - count);    // get number of CPU TSC per 8254 ClkTick (1,19MHz)
+        else
+            qwTSCPerIntervall = qwTSCEnd - qwTSCStart;
 
-    } while (times-- > 0);
+        if (0x200 & eflags)                                     // restore IF interrupt flag
+            _enable();
 
-    qwTSCEnd = __rdtsc();                               // get TSC end ~50ms
-
-    if (0x200 & eflags)                                 // restore IF interrupt flag
-        _enable();
-
-    return (int64_t)(qwTSCEnd - qwTSCStart);
+    }
+    return (int64_t)qwTSCPerIntervall;
 }
 
 ///////////////////////////////////////
@@ -119,7 +151,7 @@ extern void _enable(void);
     @retval number of CPU clock per second
 
 **/
-unsigned long long _osifIbmAtGetTscPer62799(uint32_t delay) {
+unsigned long long __osifIbmAtGetTscPer62799(uint32_t delay) {
 
     size_t eflags = __readeflags();         // save flaags
     unsigned long long qwTSCPerTick, qwTSCEnd, qwTSCStart, qwTSCDrift;

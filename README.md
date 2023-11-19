@@ -46,6 +46,13 @@ This mode was made available to enable repeated .NSH/batch controlled
 Just watch the video: https://www.youtube.com/watch?v=hjeykqZqekc&t=27s
 
 ## Revision history
+### 20231119
+* add error correction menu `CONF\Error Correction` and command line (`/ERRCODIS`) selectable
+	* NOTE: Error correction N/A for original TIANOCORE (TIANO) measurement method<br>
+	  Only available for **TSCSYNC** ACPI and PIT.
+* add calibration method menu `CONF\Calibration Method TIANO/PIT/ACPI` and command line (`/METHOD`)  selectable
+* add number of measurement command line (`/NUM:0/1/2/3`)  selectable
+* update to TORO C Library 20231118
 ### 20231105
 * improvement, *BETA RELEASE*
 * add **Calibration Method** for *PIT(i8254)* and *original tianocore* to CONFig menu<br>
