@@ -9,6 +9,10 @@ TSCSync - TimeStampCounter (TSC) synchronizer,  analyze System Timer characteris
 
 ![XLSXSheet1](XLSXSheet1.png)
 
+![XLSXSheet1](XLSXSheet2.png)
+
+![XLSXSheet1](XLSXSheet3.png)
+
 ## Intention
 Explore timer characteristics on current UEFI Personal Computer (PC) hardware.
 
@@ -46,6 +50,9 @@ This mode was made available to enable repeated .NSH/batch controlled
 Just watch the video: https://www.youtube.com/watch?v=hjeykqZqekc&t=27s
 
 ## Revision history
+### 20231202
+* add retrieval, examination and comparison of original **UEFI** **`EFI_TIMESTAMP_PROTOCOL`**<br>
+  NOTE: **`EFI_TIMESTAMP_PROTOCOL`** provides inaccurate results on most systems.
 ### 20231119
 * add error correction menu `CONF\Error Correction` and command line (`/ERRCODIS`) selectable
 	* NOTE: Error correction N/A for original TIANOCORE (TIANO) measurement method<br>
