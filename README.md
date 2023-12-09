@@ -50,6 +50,9 @@ This mode was made available to enable repeated .NSH/batch controlled
 Just watch the video: https://www.youtube.com/watch?v=hjeykqZqekc&t=27s
 
 ## Revision history
+### 20231209
+* add retrieval of [**Time Stamp Counter and Core Crystal Clock Information Leaf**](https://www.intel.com/content/dam/develop/external/us/en/documents/architecture-instruction-set-extensions-programming-reference.pdf#page=34)
+	* NOTE: On platforms with available **CPUID leaf 0x15** (Intel CPU 2017 and later) it demonstrates, that ACPI reference synchronisation is very accurate (about 0.1ppm)
 ### 20231202
 * add retrieval, examination and comparison of original **UEFI** **`EFI_TIMESTAMP_PROTOCOL`**<br>
   NOTE: **`EFI_TIMESTAMP_PROTOCOL`** provides inaccurate results on most systems.

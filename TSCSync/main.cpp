@@ -186,6 +186,7 @@ char gstrCPUIDFam[128];
 char gstrCPUIDMod[128];
 char gstrCPUIDStp[128];
 char gstrCPUSpeed[128];
+char gstrCPUIDSpeed[128] = { "N/A" };	// detremined by CPUID leaf 15
 int64_t gTIMESTAMP_PROTOCOLPerSec;
 int64_t gTIMESTAMP_PROTOCOLSecDriftPerDay;
 char gstrTIMESTAMP_PROTOCOL[128];
@@ -577,15 +578,16 @@ int fnMnuItm_File_SaveAs(CTextWindow* pThis, void* pContext, void* pParm)
 				sprintf(strtmp, "Vendor CPUID: %s", gstrCPUID0), worksheet_write_string(worksheet, CELL("B7"), strtmp, bold);
 				sprintf(strtmp, "HostBridge VID:DID: %02X:%02X",((uint16_t*)pMCFG->BaseAddress)[0],((uint16_t*)pMCFG->BaseAddress)[1]), worksheet_write_string(worksheet, CELL("B8"), strtmp, bold);
 				sprintf(strtmp, "CPUID Signature: %s", gstrCPUIDSig), worksheet_write_string(worksheet, CELL("B9"), strtmp, bold);
-				sprintf(strtmp, "CPU Speed(measured): %s", gstrCPUSpeed), worksheet_write_string(worksheet, CELL("B10"), strtmp, bold);
-				sprintf(strtmp, "CPU Speed(EFI_TIMESTAMP_PROTOCOL): %s", gstrTIMESTAMP_PROTOCOL), worksheet_write_string(worksheet, CELL("B11"), strtmp, bold);
+				sprintf(strtmp, "CPU Speed(CPUID 15): %s", gstrCPUIDSpeed), worksheet_write_string(worksheet, CELL("B10"), strtmp, bold);
+				sprintf(strtmp, "CPU Speed(measured): %s", gstrCPUSpeed), worksheet_write_string(worksheet, CELL("B11"), strtmp, bold);
+				sprintf(strtmp, "CPU Speed(EFI_TIMESTAMP_PROTOCOL): %s", gstrTIMESTAMP_PROTOCOL), worksheet_write_string(worksheet, CELL("B12"), strtmp, bold);
 				if (0 != strncmp(gstrTIMESTAMP_PROTOCOL, "N/A", strlen("N/A")))
-					sprintf(strtmp, "    EFI_TIMESTAMP_PROTOCOL drift : %llds per day", gTIMESTAMP_PROTOCOLSecDriftPerDay), worksheet_write_string(worksheet, CELL("B12"), strtmp, bold);
-				sprintf(strtmp, "target .XLSX: %s", gCfgStr_File_SaveAs), worksheet_write_string(worksheet, CELL("B13"), strtmp, bold);
-                sprintf(strtmp, "RefTimerDev: %s", 2 == gfCfgSyncRef012 ? "PIT" : (1 == gfCfgSyncRef012 ? "RTC" : "ACPI")), worksheet_write_string(worksheet, CELL("B14"), strtmp, bold);//0 -> ACPI, 1 -> RTC, 2 -> PIT
-				sprintf(strtmp, "RefSyncTime: %ds", gnCfgRefSyncTime), worksheet_write_string(worksheet, CELL("B15"), strtmp, bold);
-				sprintf(strtmp, "Calibration Method: %s", gCfgStr_CalibrMethod), worksheet_write_string(worksheet, CELL("B16"), strtmp, bold);
-                sprintf(strtmp, "Error correction: %s", 0 == gfErrorCorrection ? "disabled" : (pfnDelay == &InternalAcpiDelay ? "N/A on TIANOCORE" : "enabled")), worksheet_write_string(worksheet, CELL("B17"), strtmp, bold);
+					sprintf(strtmp, "    EFI_TIMESTAMP_PROTOCOL drift : %llds per day", gTIMESTAMP_PROTOCOLSecDriftPerDay), worksheet_write_string(worksheet, CELL("B13"), strtmp, bold);
+				sprintf(strtmp, "target .XLSX: %s", gCfgStr_File_SaveAs), worksheet_write_string(worksheet, CELL("B14"), strtmp, bold);
+                sprintf(strtmp, "RefTimerDev: %s", 2 == gfCfgSyncRef012 ? "PIT" : (1 == gfCfgSyncRef012 ? "RTC" : "ACPI")), worksheet_write_string(worksheet, CELL("B15"), strtmp, bold);//0 -> ACPI, 1 -> RTC, 2 -> PIT
+				sprintf(strtmp, "RefSyncTime: %ds", gnCfgRefSyncTime), worksheet_write_string(worksheet, CELL("B16"), strtmp, bold);
+				sprintf(strtmp, "Calibration Method: %s", gCfgStr_CalibrMethod), worksheet_write_string(worksheet, CELL("B17"), strtmp, bold);
+                sprintf(strtmp, "Error correction: %s", 0 == gfErrorCorrection ? "disabled" : (pfnDelay == &InternalAcpiDelay ? "N/A on TIANOCORE" : "enabled")), worksheet_write_string(worksheet, CELL("B18"), strtmp, bold);
 
 			}
 
@@ -836,16 +838,17 @@ int fnMnuItm_View_SysInfo(CTextWindow* pThis, void* pContext, void* pParm)
 			((uint16_t*)pMCFG->BaseAddress)[1]
 		);
 		pRoot->TextPrint({ 2, 12 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "CPUID Signature                  : %s", gstrCPUIDSig);
-		pRoot->TextPrint({ 2, 13 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "CPU Speed(measured)              : %s", gstrCPUSpeed);
-		pRoot->TextPrint({ 2, 14 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "CPU Speed(EFI_TIMESTAMP_PROTOCOL): %s", gstrTIMESTAMP_PROTOCOL);
+		pRoot->TextPrint({ 2, 13 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "CPU Speed(CPUID 15)              : %s", gstrCPUIDSpeed);
+		pRoot->TextPrint({ 2, 14 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "CPU Speed(measured)              : %s", gstrCPUSpeed);
+		pRoot->TextPrint({ 2, 15 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "CPU Speed(EFI_TIMESTAMP_PROTOCOL): %s", gstrTIMESTAMP_PROTOCOL);
 		if (0 != strncmp(gstrTIMESTAMP_PROTOCOL, "N/A", strlen("N/A")))
-			pRoot->TextPrint({ 2, 15 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "    EFI_TIMESTAMP_PROTOCOL drift : %llds per day", gTIMESTAMP_PROTOCOLSecDriftPerDay);
+			pRoot->TextPrint({ 2, 16 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "    EFI_TIMESTAMP_PROTOCOL drift : %llds per day", gTIMESTAMP_PROTOCOLSecDriftPerDay);
 
-		pRoot->TextPrint({ 2, 17 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "target .XLSX                     : %s", gCfgStr_File_SaveAs);
-        pRoot->TextPrint({ 2, 18 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "RefTimerDev                      : %s", 2 == gfCfgSyncRef012 ? "PIT" : (1 == gfCfgSyncRef012 ? "RTC" : "ACPI"));//0 -> ACPI, 1 -> RTC, 2 -> PIT
-		pRoot->TextPrint({ 2, 19 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "RefSyncTime                      : %ds", gnCfgRefSyncTime);
-		pRoot->TextPrint({ 2, 20 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "Calibration Method               : %s", gCfgStr_CalibrMethod);
-        pRoot->TextPrint({ 2, 21 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "Error correction                 : %s", 0 == gfErrorCorrection ? "disabled" : (pfnDelay == &InternalAcpiDelay ? "N/A on TIANOCORE" : "enabled"));
+		pRoot->TextPrint({ 2, 18 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "target .XLSX                     : %s", gCfgStr_File_SaveAs);
+        pRoot->TextPrint({ 2, 19 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "RefTimerDev                      : %s", 2 == gfCfgSyncRef012 ? "PIT" : (1 == gfCfgSyncRef012 ? "RTC" : "ACPI"));//0 -> ACPI, 1 -> RTC, 2 -> PIT
+		pRoot->TextPrint({ 2, 20 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "RefSyncTime                      : %ds", gnCfgRefSyncTime);
+		pRoot->TextPrint({ 2, 21 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "Calibration Method               : %s", gCfgStr_CalibrMethod);
+        pRoot->TextPrint({ 2, 22 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "Error correction                 : %s", 0 == gfErrorCorrection ? "disabled" : (pfnDelay == &InternalAcpiDelay ? "N/A on TIANOCORE" : "enabled"));
 	}
 	return 0;
 }
@@ -1789,6 +1792,30 @@ int main(int argc, char** argv)
 		sprintf(gstrCPUSpeed, "%lldHz, %c.%c%cGHz", gTSCPerSecondReference, buffer[0], buffer[1], buffer[2]);
 	}
 
+	//
+	//	determine processor speed by CPUID 0x15
+	//
+	if (1)do
+	{
+			int32_t cpuInfo[4] = { -1 };
+			uint64_t rax, rbx, rcx;
+
+			__cpuid(cpuInfo, 0x15);
+			
+			rax = cpuInfo[0];
+			rbx = cpuInfo[1];
+			rcx = cpuInfo[2];
+
+			if (rcx == 0 || rax == 0)
+				break;
+
+			rcx *= rbx;
+			rcx /= rax;
+
+			sprintf(gstrCPUIDSpeed, "%lldHz", rcx);
+
+	}while (0);
+
 	do
 	{
 		char* pc = new char[256];
@@ -1910,16 +1937,17 @@ int main(int argc, char** argv)
 			((uint16_t*)pMCFG->BaseAddress)[1]
 		);
 		FullScreen.TextPrint({ 2, 12 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "CPUID Signature                  : %s", gstrCPUIDSig);
-		FullScreen.TextPrint({ 2, 13 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "CPU Speed(measured)              : %s", gstrCPUSpeed);
-		FullScreen.TextPrint({ 2, 14 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "CPU Speed(EFI_TIMESTAMP_PROTOCOL): %s", gstrTIMESTAMP_PROTOCOL);
+		FullScreen.TextPrint({ 2, 13 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "CPU Speed(CPUID 15)              : %s", gstrCPUIDSpeed);
+		FullScreen.TextPrint({ 2, 14 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "CPU Speed(measured)              : %s", gstrCPUSpeed);
+		FullScreen.TextPrint({ 2, 15 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "CPU Speed(EFI_TIMESTAMP_PROTOCOL): %s", gstrTIMESTAMP_PROTOCOL);
 		if (0 != strncmp(gstrTIMESTAMP_PROTOCOL, "N/A", strlen("N/A")))
-			FullScreen.TextPrint({ 2, 15 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "    EFI_TIMESTAMP_PROTOCOL drift : %llds per day", gTIMESTAMP_PROTOCOLSecDriftPerDay);
+			FullScreen.TextPrint({ 2, 16 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "    EFI_TIMESTAMP_PROTOCOL drift : %llds per day", gTIMESTAMP_PROTOCOLSecDriftPerDay);
 
-		FullScreen.TextPrint({ 2, 17 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "target .XLSX                     : %s", gCfgStr_File_SaveAs);
-		FullScreen.TextPrint({ 2, 18 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "RefTimerDev                      : %s", 2 == gfCfgSyncRef012 ? "PIT" : (1 == gfCfgSyncRef012 ? "RTC" : "ACPI"));
-		FullScreen.TextPrint({ 2, 19 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "RefSyncTime                      : %ds", gnCfgRefSyncTime);
-		FullScreen.TextPrint({ 2, 20 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "Calibration Method               : %s", gCfgStr_CalibrMethod);
-        FullScreen.TextPrint({ 2, 21 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "Error correction                 : %s", 0 == gfErrorCorrection ? "disabled" : (pfnDelay == &InternalAcpiDelay ? "N/A on TIANOCORE" : "enabled"));
+		FullScreen.TextPrint({ 2, 18 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "target .XLSX                     : %s", gCfgStr_File_SaveAs);
+		FullScreen.TextPrint({ 2, 19 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "RefTimerDev                      : %s", 2 == gfCfgSyncRef012 ? "PIT" : (1 == gfCfgSyncRef012 ? "RTC" : "ACPI"));
+		FullScreen.TextPrint({ 2, 20 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "RefSyncTime                      : %ds", gnCfgRefSyncTime);
+		FullScreen.TextPrint({ 2, 21 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "Calibration Method               : %s", gCfgStr_CalibrMethod);
+        FullScreen.TextPrint({ 2, 22 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "Error correction                 : %s", 0 == gfErrorCorrection ? "disabled" : (pfnDelay == &InternalAcpiDelay ? "N/A on TIANOCORE" : "enabled"));
 		
 		
 		if (true == gfAutoRun)
