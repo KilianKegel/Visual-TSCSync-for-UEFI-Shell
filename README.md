@@ -50,9 +50,12 @@ This mode was made available to enable repeated .NSH/batch controlled
 Just watch the video: https://www.youtube.com/watch?v=hjeykqZqekc&t=27s
 
 ## Revision history
-### 20231209
+### 20231210
 * add retrieval of [**Time Stamp Counter and Core Crystal Clock Information Leaf**](https://www.intel.com/content/dam/develop/external/us/en/documents/architecture-instruction-set-extensions-programming-reference.pdf#page=34)
 	* NOTE: On platforms with available **CPUID leaf 0x15** (Intel CPU 2017 and later) it demonstrates, that ACPI reference synchronisation is very accurate (about 0.1ppm)
+* add retrieval of **MSR_PLATFORM_INFO** TSC Speed detection
+* add reference [spreadsheet](https://github.com/KilianKegel/Visual-TSCSync-for-UEFI-Shell/RTL.xlsx) taken on RAPTOR LAKE platform
+NOTE: Improvements below apply only to recent INTEL(tm) platforms only. The particular CPUID leaf 0x15 and MSR **MSR_PLATFORM_INFO** are not available on AMD systems.
 ### 20231202
 * add retrieval, examination and comparison of original **UEFI** **`EFI_TIMESTAMP_PROTOCOL`**<br>
   NOTE: **`EFI_TIMESTAMP_PROTOCOL`** provides inaccurate results on most systems.
