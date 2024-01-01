@@ -3,7 +3,7 @@
 	TSCSync
 	https://github.com/KilianKegel/Visual-TSCSync-for-UEFI-Shell
 
-	Copyright (c) 2017-2023, Kilian Kegel. All rights reserved.
+	Copyright (c) 2017-2024, Kilian Kegel. All rights reserved.
 	SPDX-License-Identifier: GNU General Public License v3.0
 
 Module Name:
@@ -57,6 +57,9 @@ Author:
 
 #include "xlsxwriter.h"
 
+#include "VERSION.h"
+#include "BUILDNUM.h"
+
 extern "C" EFI_SYSTEM_TABLE * _cdegST;
 extern "C" EFI_SYSTEM_TABLE * gSystemTable;
 extern "C" EFI_HANDLE gImageHandle;
@@ -108,7 +111,7 @@ extern "C" char* _strefierror(EFI_STATUS);
 
 #define IODELAY _outp(0xED, 0x55)
 
-int64_t gTSCPerSecondReference;	// initally taken from RTC UP flag 0x10 Reg 0xC
+int64_t gTSCPerSecondReference, gTSCPerSecondRefRND;    //TSC per second / rounded
 
 static const char buildtimestamp[] =
 {
@@ -168,7 +171,7 @@ bool gfCfgMngMnuItm_Config_CalibMethodSelectTIANOACPI = true;
 bool gfCfgMngMnuItm_Config_CalibMethodSelectTSCSYNCPIT = false;
 bool gfCfgMngMnuItm_Config_CalibMethodSelectTSCSYNCACPI = false;
 
-extern "C" int  gfErrorCorrection;
+extern "C" unsigned char  gfErrorCorrection;
 
 /////////////////////////////////////////////////////////////////////////////
 // global shared data
@@ -186,6 +189,7 @@ char gstrCPUIDFam[128];
 char gstrCPUIDMod[128];
 char gstrCPUIDStp[128];
 char gstrCPUSpeed[128];
+char gstrCPUSpeedRND[128];							// rounded crystal frequency
 char gstrCPUPLATFORM_INFOSpeed[128] = { "N/A" };	// detremined by MSR_PLATFORM_INFO
 char gstrCPUIDSpeed[128] = { "N/A" };				// detremined by CPUID leaf 15
 int64_t gTIMESTAMP_PROTOCOLPerSec;
@@ -321,8 +325,8 @@ bool gfCfgMngMnuItm_View_Clock = true;
 bool gfCfgMngMnuItm_View_Calendar = true;
 char gCfgStr_File_SaveAs[256] = "default.xlsx";
 char gCfgStr_CalibrMethod[64] = "original TIANOCORE";
-int gfCfgSyncRef012 = 0;		//0 -> ACPI, 1 -> RTC, 2 -> PIT
-int  gnCfgRefSyncTime = 3;		//sync time/delay
+int gfCfgSyncRef012 = 0;		//0 -> ACPI, 1 -> RTC, 2 -> i8254
+int  gnCfgRefSyncTime = 5;		//sync time/delay
 
 /////////////////////////////////////////////////////////////////////////////
 // FILE menu functions and strings
@@ -388,7 +392,7 @@ int fnMnuItm_File_SaveAs(CTextWindow* pThis, void* pContext, void* pParm)
 
 			if (1) 
 			{
-				int i = strlen(gCfgStr_File_SaveAs);												// initial cursor position
+				int i = (int)strlen(gCfgStr_File_SaveAs);												// initial cursor position
 				for (key = pThis->TextGetKey();
 					KEY_ESC != key && KEY_ENTER != key;
 					key = pThis->TextGetKey(), pThis->TextWindowUpdateProgress())
@@ -579,17 +583,18 @@ int fnMnuItm_File_SaveAs(CTextWindow* pThis, void* pContext, void* pParm)
 				sprintf(strtmp, "Vendor CPUID: %s", gstrCPUID0), worksheet_write_string(worksheet, CELL("B7"), strtmp, bold);
 				sprintf(strtmp, "HostBridge VID:DID: %02X:%02X",((uint16_t*)pMCFG->BaseAddress)[0],((uint16_t*)pMCFG->BaseAddress)[1]), worksheet_write_string(worksheet, CELL("B8"), strtmp, bold);
 				sprintf(strtmp, "CPUID Signature: %s", gstrCPUIDSig), worksheet_write_string(worksheet, CELL("B9"), strtmp, bold);
-				sprintf(strtmp, "CPU Speed(MSR 0xCE): %s", gstrCPUPLATFORM_INFOSpeed), worksheet_write_string(worksheet, CELL("B10"), strtmp, bold);
-				sprintf(strtmp, "CPU Speed(CPUID 15): %s", gstrCPUIDSpeed), worksheet_write_string(worksheet, CELL("B11"), strtmp, bold);
-				sprintf(strtmp, "CPU Speed(measured): %s", gstrCPUSpeed), worksheet_write_string(worksheet, CELL("B12"), strtmp, bold);
-				sprintf(strtmp, "CPU Speed(EFI_TIMESTAMP_PROTOCOL): %s", gstrTIMESTAMP_PROTOCOL), worksheet_write_string(worksheet, CELL("B13"), strtmp, bold);
+				sprintf(strtmp, "CPU Speed(measured): %s", gstrCPUSpeed), worksheet_write_string(worksheet, CELL("B10"), strtmp, bold);
+				sprintf(strtmp, "CPU Speed(rounded) : %s", gstrCPUSpeedRND), worksheet_write_string(worksheet, CELL("B11"), strtmp, bold);
+				sprintf(strtmp, "CPU Speed(CPUID 15): %s", gstrCPUIDSpeed), worksheet_write_string(worksheet, CELL("B12"), strtmp, bold);
+				sprintf(strtmp, "CPU Speed(MSR 0xCE): %s", gstrCPUPLATFORM_INFOSpeed), worksheet_write_string(worksheet, CELL("B13"), strtmp, bold);
+				sprintf(strtmp, "CPU Speed(EFI_TIMESTAMP_PROTOCOL): %s", gstrTIMESTAMP_PROTOCOL), worksheet_write_string(worksheet, CELL("B14"), strtmp, bold);
 				if (0 != strncmp(gstrTIMESTAMP_PROTOCOL, "N/A", strlen("N/A")))
-					sprintf(strtmp, "    EFI_TIMESTAMP_PROTOCOL drift : %llds per day", gTIMESTAMP_PROTOCOLSecDriftPerDay), worksheet_write_string(worksheet, CELL("B14"), strtmp, bold);
-				sprintf(strtmp, "target .XLSX: %s", gCfgStr_File_SaveAs), worksheet_write_string(worksheet, CELL("B15"), strtmp, bold);
-                sprintf(strtmp, "RefTimerDev: %s", 2 == gfCfgSyncRef012 ? "PIT" : (1 == gfCfgSyncRef012 ? "RTC" : "ACPI")), worksheet_write_string(worksheet, CELL("B16"), strtmp, bold);//0 -> ACPI, 1 -> RTC, 2 -> PIT
-				sprintf(strtmp, "RefSyncTime: %ds", gnCfgRefSyncTime), worksheet_write_string(worksheet, CELL("B17"), strtmp, bold);
+					sprintf(strtmp, "    EFI_TIMESTAMP_PROTOCOL drift : %llds per day", gTIMESTAMP_PROTOCOLSecDriftPerDay), worksheet_write_string(worksheet, CELL("B15"), strtmp, bold);
+				sprintf(strtmp, "target .XLSX: %s", gCfgStr_File_SaveAs), worksheet_write_string(worksheet, CELL("B17"), strtmp, bold);
+				//sprintf(strtmp, "RefTimerDev: %s", 2 == gfCfgSyncRef012 ? "i8254" : (1 == gfCfgSyncRef012 ? "RTC" : "ACPI")), worksheet_write_string(worksheet, CELL("B18"), strtmp, bold);//0 -> ACPI, 1 -> RTC, 2 -> PIT
+				//sprintf(strtmp, "RefSyncTime: %ds", gnCfgRefSyncTime), worksheet_write_string(worksheet, CELL("B17"), strtmp, bold);
 				sprintf(strtmp, "Calibration Method: %s", gCfgStr_CalibrMethod), worksheet_write_string(worksheet, CELL("B18"), strtmp, bold);
-                sprintf(strtmp, "Error correction: %s", 0 == gfErrorCorrection ? "disabled" : (pfnDelay == &InternalAcpiDelay ? "N/A on TIANOCORE" : "enabled")), worksheet_write_string(worksheet, CELL("B19"), strtmp, bold);
+				sprintf(strtmp, "Error correction: %s", 0 == gfErrorCorrection ? "disabled" : (pfnDelay == &InternalAcpiDelay ? "N/A on TIANOCORE" : "enabled")), worksheet_write_string(worksheet, CELL("B19"), strtmp, bold);
 
 			}
 
@@ -769,7 +774,7 @@ int fnMnuItm_File_SaveAs(CTextWindow* pThis, void* pContext, void* pParm)
 				lxw_chart* chart[ELC(parms)];
 				lxw_chart_series* series[ELC(parms)];
 				lxw_chartsheet* chartsheet[ELC(parms)];
-				char sheetnametmp[64], strTitle[64];
+				char sheetnametmp[64];
 
 				if (false == *parms[i].pEna)
 					continue;
@@ -840,18 +845,17 @@ int fnMnuItm_View_SysInfo(CTextWindow* pThis, void* pContext, void* pParm)
 			((uint16_t*)pMCFG->BaseAddress)[1]
 		);
 		pRoot->TextPrint({ 2, 10 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "CPUID Signature                  : %s", gstrCPUIDSig);
-		pRoot->TextPrint({ 2, 11 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "CPU Speed(MSR 0xCE)              : %s", gstrCPUPLATFORM_INFOSpeed);
-		pRoot->TextPrint({ 2, 12 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "CPU Speed(CPUID 15)              : %s", gstrCPUIDSpeed);
-		pRoot->TextPrint({ 2, 13 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "CPU Speed(measured)              : %s", gstrCPUSpeed);
-		pRoot->TextPrint({ 2, 14 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "CPU Speed(EFI_TIMESTAMP_PROTOCOL): %s", gstrTIMESTAMP_PROTOCOL);
+		pRoot->TextPrint({ 2, 11 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "CPU Speed(measured)              : %s", gstrCPUSpeed);
+		pRoot->TextPrint({ 2, 12 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "CPU Speed(rounded)               : %s", gstrCPUSpeedRND);
+		pRoot->TextPrint({ 2, 13 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "CPU Speed(CPUID 15)              : %s", gstrCPUIDSpeed);
+		pRoot->TextPrint({ 2, 14 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "CPU Speed(MSR 0xCE)              : %s", gstrCPUPLATFORM_INFOSpeed);
+		pRoot->TextPrint({ 2, 16 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "CPU Speed(EFI_TIMESTAMP_PROTOCOL): %s", gstrTIMESTAMP_PROTOCOL);
 		if (0 != strncmp(gstrTIMESTAMP_PROTOCOL, "N/A", strlen("N/A")))
-			pRoot->TextPrint({ 2, 15 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "    EFI_TIMESTAMP_PROTOCOL drift : %llds per day", gTIMESTAMP_PROTOCOLSecDriftPerDay);
+			pRoot->TextPrint({ 2, 17 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "    EFI_TIMESTAMP_PROTOCOL drift : %llds per day", gTIMESTAMP_PROTOCOLSecDriftPerDay);
 
-		pRoot->TextPrint({ 2, 17 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "target .XLSX                     : %s", gCfgStr_File_SaveAs);
-        pRoot->TextPrint({ 2, 18 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "RefTimerDev                      : %s", 2 == gfCfgSyncRef012 ? "PIT" : (1 == gfCfgSyncRef012 ? "RTC" : "ACPI"));//0 -> ACPI, 1 -> RTC, 2 -> PIT
-		pRoot->TextPrint({ 2, 19 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "RefSyncTime                      : %ds", gnCfgRefSyncTime);
+		pRoot->TextPrint({ 2, 19 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "target .XLSX                     : %s", gCfgStr_File_SaveAs);
 		pRoot->TextPrint({ 2, 20 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "Calibration Method               : %s", gCfgStr_CalibrMethod);
-        pRoot->TextPrint({ 2, 21 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "Error correction                 : %s", 0 == gfErrorCorrection ? "disabled" : (pfnDelay == &InternalAcpiDelay ? "N/A on TIANOCORE" : "enabled"));
+		pRoot->TextPrint({ 2, 21 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "Error correction                 : %s", 0 == gfErrorCorrection ? "disabled" : (pfnDelay == &InternalAcpiDelay ? "N/A on TIANOCORE" : "enabled"));
 	}
 	return 0;
 }
@@ -1202,25 +1206,24 @@ int fnMnuItm_About_0(CTextWindow* pThis, void* pContext, void* pParm)
     
     if (1)
     {
-        long long tsbld = 0;
-        sscanf(buildtimestamp, "%lld", &tsbld);
+        //long long tsbld = 0;
+        //sscanf(buildtimestamp, "%lld", &tsbld);
 
-        pAboutBox->TextPrint({ 1, 1 }, " TSCSYNC -- TimeStampCounter (TSC) synchronizer, Build %llX",tsbld);
-        pAboutBox->TextPrint({ 1, 2 }, "  Analyzing System Timer characteristics, Copyright(c) 2023, Kilian Kegel");
-        pAboutBox->TextPrint({ 1, 4 }, "  Sample program to demonstrate for UEFI platforms:");
-        pAboutBox->TextPrint({ 1, 5 }, "    - data processing, logging, representation for laboratory applications");
-        pAboutBox->TextPrint({ 1, 6 }, "    - implementation of a simple menu driven user interface");
-        pAboutBox->TextPrint({ 1, 7 }, "    - integration of open source 3rd party libraries (ZLIB, LIBXLSXWRITER)");
-        pAboutBox->TextPrint({ 1, 9 }, "  Command line options:");
-        pAboutBox->TextPrint({ 1,10 }, "   /AUTORUN          - run, save and terminate previously configured session");
-        pAboutBox->TextPrint({ 1,11 }, "   /SYNCREF:<parm>   - choose RTC/ACPI timer reference, (default ACPI)");
-        pAboutBox->TextPrint({ 1,12 }, "   /SYNCTIME:<sec>   - choose 3s sync time, (default 1 second)");
-        pAboutBox->TextPrint({ 1,13 }, "   /OUT:<fname.xlsx> - assign filname of EXCEL logfile in .XLSX fileformat");
-        pAboutBox->TextPrint({ 1,14 }, "   /METHOD:<type>    - calibration method TIANO (InternalAcpiDelay()),");
-        pAboutBox->TextPrint({ 1,15 }, "                       ACPI (TSCSYNC-ACPI) or PIT (TSCSYNC-PIT-i8254)");
-        pAboutBox->TextPrint({ 1,16 }, "   /NUM:0/1/2/3      - number of samples 0: 10, 1: 50, 2: 250, 3: 1250");
-        pAboutBox->TextPrint({ 1,17 }, "   /ERRCODIS         - disable error correction of additionally gone through");
-	    pAboutBox->TextPrint({ 1,18 }, "                       counter ticks. N/A for TIANOCORE measurement method");
+        pAboutBox->TextPrint({ 1, 1 }, " TSCSYNC -- TimeStampCounter (TSC) synchronizer");
+		pAboutBox->TextPrint({ 1, 2 }, "  Copyright(c) %d-%d, Kilian Kegel",YEARSTART, YEARCURRENT);
+        pAboutBox->TextPrint({ 1, 3 }, "  Analyzing System Timer characteristics, v%d.%d.%d Build %d", MAJORVER, MINORVER, PATCHVER, BUILDNUM);
+        pAboutBox->TextPrint({ 1, 5 }, " Sample program to demonstrate for UEFI platforms:");
+        pAboutBox->TextPrint({ 1, 6 }, "  - data processing, logging, representation for laboratory applications");
+        pAboutBox->TextPrint({ 1, 7 }, "  - implementation of a simple menu driven user interface");
+        pAboutBox->TextPrint({ 1, 8 }, "  - integration of open source 3rd party libraries (ZLIB, LIBXLSXWRITER)");
+        pAboutBox->TextPrint({ 1,10 }, " Command line options:");
+        pAboutBox->TextPrint({ 1,12 }, "  /AUTORUN          - run, save and terminate previously configured session");
+		pAboutBox->TextPrint({ 1,13 }, "  /OUT:<fname.xlsx> - assign filname of EXCEL logfile in .XLSX fileformat");
+		pAboutBox->TextPrint({ 1,14 }, "  /METHOD:<type>    - calibration method TIANO (InternalAcpiDelay()),");
+		pAboutBox->TextPrint({ 1,15 }, "                      ACPI (TSCSYNC-ACPI) or i8254 (TSCSYNC-PIT-i8254)");
+		pAboutBox->TextPrint({ 1,16 }, "  /NUM:0/1/2/3      - number of samples 0: 10, 1: 50, 2: 250, 3: 1250");
+		pAboutBox->TextPrint({ 1,17 }, "  /ERRCODIS         - disable error correction of additionally gone through");
+		pAboutBox->TextPrint({ 1,18 }, "                       counter ticks. N/A for TIANOCORE measurement method");
 
     }
 	//RealTimeClock Analyser
@@ -1327,7 +1330,7 @@ int main(int argc, char** argv)
 		EFI_GUID efi_timestamp_protocol_guid = EFI_TIMESTAMP_PROTOCOL_GUID;
 		EFI_TIMESTAMP_PROTOCOL* pEFI_TIMESTAMP_PROTOCOL = (EFI_TIMESTAMP_PROTOCOL*)-1;
 		EFI_TIMESTAMP_PROPERTIES efi_timestamp_properties;
-		int i, synctime = 3, token;
+		int synctime = 3;
 
 		Status = gSystemTable->BootServices->LocateProtocol(&efi_timestamp_protocol_guid, NULL, (void**) &pEFI_TIMESTAMP_PROTOCOL);
 		
@@ -1352,7 +1355,7 @@ int main(int argc, char** argv)
 	}
 
 	DataSize2 = GetSystemFirmwareTable('ACPI', 'GFCM', pMCFG, 32768 * 8);
-	sprintf(gACPIPCIEBase, "%p", pMCFG->BaseAddress);
+	sprintf(gACPIPCIEBase, "%p", (void*)pMCFG->BaseAddress);
 
 	//
 	// CPU ID
@@ -1361,7 +1364,7 @@ int main(int argc, char** argv)
 	{
 		int cpuInfo[4] = { 0,0,0,0 };
 		char* pStr = (char*) &cpuInfo[1];
-		unsigned char* puc;
+
 		__cpuid(cpuInfo, 0);
 		sprintf(gstrCPUID0, "%c%c%c%c%c%c%c%c%c%c%c%c",
 			pStr[0],
@@ -1454,20 +1457,17 @@ int main(int argc, char** argv)
 			|| 0 == _strnicmp(argv[arg], "-h", strlen("-h"))
 			)
 		{   //      |------------------------------------------------------------------------------|
-            long long tsbld = 0;
-            sscanf(buildtimestamp, "%lld", &tsbld);
-            printf("\nTSCSYNC -- TimeStampCounter (TSC) synchronizer, Build %llX\n  Analysing System Timer characteristics, Copyright (c) 2023, Kilian Kegel\n\n", tsbld);
+            printf("\nTSCSYNC -- TimeStampCounter (TSC) synchronizer\n  Copyright (c) %d-%d, Kilian Kegel\n  Analysing System Timer characteristics, v%d.%d.%d Build %d\n\n", YEARSTART, YEARCURRENT, MAJORVER, MINORVER, PATCHVER, BUILDNUM);
             printf("  Sample program to demonstrate for UEFI platforms:\n");
             printf("    - data processing, logging, representation for laboratory applications\n");
             printf("    - implementation of a simple menu driven user interface\n");
             printf("    - integration of open source 3rd party libraries (ZLIB, LIBXLSXWRITER)\n\n");
             printf("  Command line options:\n");
             printf("   /AUTORUN          - run, save and terminate previously configured session\n");
-            printf("   /SYNCREF:<parm>   - choose RTC/ACPI timer reference, (default ACPI)\n");
-            printf("   /SYNCTIME:<sec>   - choose 3s sync time, (default 1 second)\n");
+//			printf("   /SYNCREF:<parm>   - choose RTC/ACPI/i8254 timer reference, (default ACPI)\n");
             printf("   /OUT:<fname.xlsx> - assign filname of EXCEL logfile in .XLSX fileformat\n");
             printf("   /METHOD:<type>    - calibration method TIANO (InternalAcpiDelay()),\n");
-            printf("                       ACPI (TSCSYNC-ACPI) or PIT (TSCSYNC-PIT-i8254)\n");
+            printf("                       ACPI (TSCSYNC-ACPI) or i8254 (TSCSYNC-PIT-i8254)\n");
             printf("   /NUM:0/1/2/3      - number of samples 0: 10, 1: 50, 2: 250, 3: 1250\n");
             printf("   /ERRCODIS         - disable error correction of additionally gone through\n");
             printf("                       counter ticks. N/A for TIANOCORE measurement method\n");
@@ -1519,43 +1519,15 @@ int main(int argc, char** argv)
 
 		if (0 == _strnicmp(argv[arg], "/SYNCREF", strlen("/SYNCREF")))
 		{
-			char strtmp[8], strtmp2[16];
-			int t;
-			bool fErr = false;
 
-			t = sscanf(argv[arg], "%8s:%s", &strtmp, &strtmp2);
-
-			if (t != 2)
-				fErr = true;
-
-			if (0 == _stricmp(strtmp2, "RTC"))
-				gfCfgSyncRef012 = 1;
-			else if (0 == _stricmp(strtmp2, "ACPI"))
-				gfCfgSyncRef012 = 0;
-			else if (0 == _stricmp(strtmp2, "PIT"))
-				gfCfgSyncRef012 = 2;
-			else
-				fErr = true;
-
-			if (true == fErr)
-			{
-				fprintf(stderr, "Parameter failure \"%s\", consider format: \"/SYNCREF:ACPI\" or \"/SYNCREF:RTC\"", argv[arg]);
-				exit(1);
-			}
+            fprintf(stderr, "Option \"/SYNCREF\" not supported anymore. ACPI SYNCREF is chosen always now\n");
+            exit(1);
 		}
 
 		if (0 == _strnicmp(argv[arg], "/SYNCTIME", strlen("/SYNCTIME")))
 		{
-			char strtmp[16];
-			int t;
-
-			t = sscanf(argv[arg], "%9s:%d", &strtmp, &gnCfgRefSyncTime);
-
-			if (t != 2 || 1 > gnCfgRefSyncTime)
-			{
-				fprintf(stderr, "Parameter failure \"%s\", consider format: \"/SYNCTIME:1\"", argv[arg]);
-				exit(1);
-			}
+            fprintf(stderr, "Option \"/SYNCTIME\" not supported anymore.\n");
+            exit(1);
 		}
 
         if (0 == _strnicmp(argv[arg], "/METHOD", strlen("/METHOD")))
@@ -1587,7 +1559,7 @@ int main(int argc, char** argv)
 				strcpy(gCfgStr_CalibrMethod, "native TSCSync ACPI");
 				pfnDelay = &AcpiClkWait;
             }
-			else if (0 == _stricmp(strtmp2, "PIT"))
+			else if (0 == _stricmp(strtmp2, "i8254"))
 			{
 				gfCfgMngMnuItm_Config_CalibMethodSelectTIANOACPI = false;
 				gfCfgMngMnuItm_Config_CalibMethodSelectTSCSYNCPIT = true;
@@ -1601,7 +1573,7 @@ int main(int argc, char** argv)
 
             if (true == fErr)
             {
-                fprintf(stderr, "Parameter failure \"%s\", consider format: \"/METHOD:TIANO\" or \"/METHOD:ACPI\" or \"/METHOD:PIT\", Tokens %d, \"%s:%s\"\n", argv[arg],t,strtmp,strtmp2);
+                fprintf(stderr, "Parameter failure \"%s\", consider format: \"/METHOD:TIANO\" or \"/METHOD:ACPI\" or \"/METHOD:i8254\", Tokens %d, \"%s:%s\"\n", argv[arg],t,strtmp,strtmp2);
                 exit(1);
             }
 
@@ -1668,7 +1640,7 @@ int main(int argc, char** argv)
                 //	printf("--> %4d: diff %5d\n", i,diff);
             }
         }
-        printf("ACPI Timer characteristic %8lld consecutive reads: min %3lld, max %3lld, av %3lld\n", MAXNUM, min, max, sum / MAXNUM);
+        printf("ACPI Timer characteristic %8d consecutive reads: min %3lld, max %3lld, av %3lld\n", MAXNUM, min, max, sum / MAXNUM);
     }
 
     //
@@ -1721,7 +1693,7 @@ int main(int argc, char** argv)
 		//
 		// wait UP (update ended) interrupt flag to start on time https://www.nxp.com/docs/en/data-sheet/MC146818.pdf#page=16
 		// 
-		printf("%d seconds for ultra precise TSC calibration on %s... \n", SECONDS, 2 == gfCfgSyncRef012 ? "PIT" : (1 == gfCfgSyncRef012 ? "RTC" : "ACPI"));
+		printf("%d seconds for ultra precise TSC calibration on %s... \n", SECONDS, 2 == gfCfgSyncRef012 ? "i8254" : (1 == gfCfgSyncRef012 ? "RTC" : "ACPI"));
 		qwTSCStart = 0;
 
 		_disable();
@@ -1760,9 +1732,229 @@ int main(int argc, char** argv)
 
 		gTSCPerSecondReference = (int64_t)((qwTSCEnd - qwTSCStart) / SECONDS);
 		
+        if (0)
+        {
+            uint64_t ll, digit, fac = 1000;
+
+            ll = gTSCPerSecondReference / 1000;
+
+            digit = ll % 10;
+
+            do
+            {
+                if (digit > 4)
+                    ll += (10 - digit);
+                else
+                    ll -= digit;
+
+                ll /= 10;
+                fac *= 10;
+            } while (!((digit = ll % 10) == 0)/* || fac < 1000 */);
+            
+            gTSCPerSecondRefRND = ll * fac;
+
+        }
+        
+        //
+        // crystalRND: crystal frequency rounding
+        //
+        //  NOTE: This is experimental. It deals with perodic and non-periodic frequencies
+        //
+        //    Real world frequencies sampled on my own private platforms:
+        // 	    2611200334  TGL non-periodic
+    	//      2112000247  TGL non-periodic
+	    //      1991998778  WKL non-periodic
+	    //      1113599211  JPL non-periodic
+	    //      2295690115  AMD non-periodic
+	    //      1996248576  AMD non-periodic
+        //
+        //      1333332396  BYT periodic
+        //      1866665350  BYT periodic
+        //      
+        //    Algorithm:
+        //      1) discard lowest 3 decimal digits
+        //      2) round decimal digit 4
+        //      3) get difference of gTSCPerSecondReference and gTSCPerSecondRefRND
+        //      4) if DIFF > 2000 (experimental)
+        //          I)   discard lowest 4 decimal digits of rounded gTSCPerSecondRefRND
+        //               NOTE: gTSCPerSecondRefRND lowest 3 digits are 0
+        //          II)  get rounded decimal digit 5
+        //          III) calculate original value (before rounding) of decimal digit 5
+        //          IV)  if digit 5 is periodic at digit 6 expand value to digits 4..0
+        //   
+        //        
+        //
+        if (0)
+        {
+            int64_t ll, digit;
+            int diff;
+
+            ll = gTSCPerSecondReference / 1000;
+
+            digit = ll % 10;
+
+            if (digit > 4)
+                ll += (10 - digit);
+            else
+                ll -= digit;
+
+            gTSCPerSecondRefRND = ll * 1000;
+
+            diff = abs((int)(gTSCPerSecondRefRND - gTSCPerSecondReference));
+
+            if (diff > 2000)
+            {
+                ll = gTSCPerSecondRefRND / 10000;	// get digit 5 -> 10000 position
+                digit = ll % 10;					// have digit
+
+                if (digit > 4)						// check, is it rounded up or down
+                    digit -= 1;						// up -> decrement
+
+                //
+                // check if digit is periodic at digit 6 -> 100000 position
+                //
+                if (digit == (gTSCPerSecondRefRND / 100000) % 10)
+                {
+                    gTSCPerSecondRefRND += digit * 1111;
+                    if (digit > 4)
+                        gTSCPerSecondRefRND -= 10000;
+                }
+                diff = abs((int)(gTSCPerSecondRefRND - gTSCPerSecondReference));
+            }
+
+        }
+
+		//
+		// crystalRND: crystal frequency rounding
+		//
+		//  NOTE: This is experimental. It deals with perodic and non-periodic frequencies
+		//
+		//    Real world frequencies sampled on my own private platforms:
+		//		2611200334	TGL non-periodic
+		//		2112000247	TGL non-periodic
+		//		1991998778	WKL non-periodic
+		//		1991988778	TST non-periodic
+		//		1113599211	JPL non-periodic
+		//		2295690115	AMD non-periodic
+		//		1996248576	AMD non-periodic
+		//		1896436315	AMD EPYC non-periodic
+		//		
+		//		1333332396	BYT periodic
+		//		1866665350	BYT periodic
+		//		1916665295	BYT periodic
+		//      
+		//    Algorithm:
+		//		1) check periodic A.BCD.EFG.HIJ
+		//			I)  check if digit "F" is repeted in digit "E" and "D"
+		//			II) if so, repeat digit "F" in digits "GHIF", finish
+		//		2) 3 digit kilo range rounding A.BCD.EFG.HIJ
+		//			I)  round "EFG"
+		//			II)	if difference of rounded "EFG" and original "EFG" < 20
+		//				use rounded (transfer carry to remaining higher digits), finish
+		//		3) 2 digit kilo range rounding A.BCD.EFG.HIJ
+		//			I)  round "FG"
+		//			II)	if difference of rounded "FG" and original "FG" < 5
+		//				use rounded (transfer carry to remaining higher digits), finish
+		//				 
 		if (1)
 		{
-			int64_t gTSCPerDayReference = (int64_t)(86400 * (qwTSCEnd - qwTSCStart) / SECONDS);
+			do {
+
+				//
+				// check periodic
+				//
+				if (1)
+				{
+					int count = 0;
+					int64_t ll, digit;
+					for (ll = gTSCPerSecondReference / 10000, digit = ll % 10; 1000 < ll; ll /= 10)
+					{
+						int64_t nextdgt = (ll % 100) / 10;
+						digit = ll % 10;
+						if (digit == nextdgt)
+							count++;
+						else
+							break;//for
+
+						if (2 == count)
+							break;
+					}
+
+					if (2 == count)
+					{
+						ll = (gTSCPerSecondReference / 10000) * 10000;
+						ll += 1111 * digit;
+						gTSCPerSecondRefRND = ll;
+						break;
+					}
+				}
+
+				//
+				// 3 digit kilo range rounding
+				//
+				if (1)
+				{
+					int64_t gigamegarange = (gTSCPerSecondReference / 1000000) * 1000000;
+					int64_t kilorange3dgt = ((gTSCPerSecondReference / 1000) * 1000 - gigamegarange) / 1000;
+					int64_t kiloRND = kilorange3dgt;
+					int d, digit, diff, x;
+
+					for (x = 0, kiloRND = kilorange3dgt, digit = 1; x < 3; x++, digit *= 10)
+					{
+						d = (kiloRND / digit) % 10;
+
+						if (d > 4)
+							kiloRND += digit * (10 - d);
+						else
+							kiloRND -= digit * d;
+					}
+
+					diff = abs((int)(kiloRND - kilorange3dgt));
+
+					gTSCPerSecondRefRND = gigamegarange + kiloRND * 1000;
+					if (diff < 20)
+						break;
+				}
+
+				//
+				// 2 digit kilo range rounding
+				//
+				if (1)
+				{
+					int64_t gigamega100krange = (gTSCPerSecondReference / 100000) * 100000;
+					int64_t kilorange2dgt = ((gTSCPerSecondReference / 1000) * 1000 - gigamega100krange) / 1000;
+					int64_t kiloRND = kilorange2dgt;
+					int d, digit, diff, x;
+
+					for (x = 0, kiloRND = kilorange2dgt, digit = 1; x < 2; x++, digit *= 10)
+					{
+						d = (kiloRND / digit) % 10;
+
+						if (d > 4)
+							kiloRND += digit * (10 - d);
+						else
+							kiloRND -= digit * d;
+					}
+
+					diff = abs((int)(kiloRND - kilorange2dgt));
+
+					gTSCPerSecondRefRND = (gTSCPerSecondReference / 1000) * 1000;
+
+					if (diff < 5)
+					{
+						gTSCPerSecondRefRND = gigamega100krange + kiloRND * 1000;
+						break;
+					}
+				}
+			} while (0);
+		}
+
+		sprintf(gstrCPUSpeed, "%lldHz", gTSCPerSecondReference);
+		sprintf(gstrCPUSpeedRND, "%lldHz", gTSCPerSecondRefRND);
+        
+        if (1)
+		{
+			//int64_t gTSCPerDayReference = (int64_t)(86400 * (qwTSCEnd - qwTSCStart) / SECONDS);
 			/*
 			                                        gTIMESTAMP_PROTOCOLPerSec * 86400 
 				gTIMESTAMP_PROTOCOLSecDriftPerDay = --------------------------------- - 86400
@@ -1772,13 +1964,13 @@ int main(int argc, char** argv)
 		}
 		
 
-		printf("%s sync base: diff %lld\n", 2 == gfCfgSyncRef012 ? "PIT" : (1 == gfCfgSyncRef012 ? "RTC" : "ACPI"), (qwTSCEnd - qwTSCStart) / SECONDS);
+		printf("%s sync base: diff %lld\n", 2 == gfCfgSyncRef012 ? "i8254" : (1 == gfCfgSyncRef012 ? "RTC" : "ACPI"), (qwTSCEnd - qwTSCStart) / SECONDS);
 	}
 
 	//
 	//	determine processor speed within 250ms second
 	//
-	if (1)
+	if (0)
 	{
 		char buffer[128] = "Determining processor speed ...";
 		//printf("%s", buffer);
@@ -1792,7 +1984,7 @@ int main(int argc, char** argv)
 
 		sprintf(buffer, "%lld", 4 * (endTSC - startTSC));
 
-		sprintf(gstrCPUSpeed, "%lldHz, %c.%c%cGHz", gTSCPerSecondReference, buffer[0], buffer[1], buffer[2]);
+		sprintf(gstrCPUSpeed, "%lldHz, ~%lldHz, %c.%c%cGHz", gTSCPerSecondReference, gTSCPerSecondRefRND, buffer[0], buffer[1], buffer[2]);
 	}
 
 	//
@@ -1949,18 +2141,17 @@ int main(int argc, char** argv)
 			((uint16_t*)pMCFG->BaseAddress)[1]
 		);
 		FullScreen.TextPrint({ 2, 10 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "CPUID Signature                  : %s", gstrCPUIDSig);
-		FullScreen.TextPrint({ 2, 11 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "CPU Speed(MSR 0xCE)              : %s", gstrCPUPLATFORM_INFOSpeed);
-		FullScreen.TextPrint({ 2, 12 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "CPU Speed(CPUID 15)              : %s", gstrCPUIDSpeed);
-		FullScreen.TextPrint({ 2, 13 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "CPU Speed(measured)              : %s", gstrCPUSpeed);
-		FullScreen.TextPrint({ 2, 14 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "CPU Speed(EFI_TIMESTAMP_PROTOCOL): %s", gstrTIMESTAMP_PROTOCOL);
+		FullScreen.TextPrint({ 2, 11 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "CPU Speed(measured)              : %s", gstrCPUSpeed);
+		FullScreen.TextPrint({ 2, 12 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "CPU Speed(rounded)               : %s", gstrCPUSpeedRND);
+		FullScreen.TextPrint({ 2, 13 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "CPU Speed(CPUID 15)              : %s", gstrCPUIDSpeed);
+		FullScreen.TextPrint({ 2, 14 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "CPU Speed(MSR 0xCE)              : %s", gstrCPUPLATFORM_INFOSpeed);
+		FullScreen.TextPrint({ 2, 15 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "CPU Speed(EFI_TIMESTAMP_PROTOCOL): %s", gstrTIMESTAMP_PROTOCOL);
 		if (0 != strncmp(gstrTIMESTAMP_PROTOCOL, "N/A", strlen("N/A")))
-			FullScreen.TextPrint({ 2, 15 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "    EFI_TIMESTAMP_PROTOCOL drift : %llds per day", gTIMESTAMP_PROTOCOLSecDriftPerDay);
+			FullScreen.TextPrint({ 2, 16 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "    EFI_TIMESTAMP_PROTOCOL drift : %llds per day", gTIMESTAMP_PROTOCOLSecDriftPerDay);
 
-		FullScreen.TextPrint({ 2, 17 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "target .XLSX                     : %s", gCfgStr_File_SaveAs);
-		FullScreen.TextPrint({ 2, 18 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "RefTimerDev                      : %s", 2 == gfCfgSyncRef012 ? "PIT" : (1 == gfCfgSyncRef012 ? "RTC" : "ACPI"));
-		FullScreen.TextPrint({ 2, 19 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "RefSyncTime                      : %ds", gnCfgRefSyncTime);
-		FullScreen.TextPrint({ 2, 20 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "Calibration Method               : %s", gCfgStr_CalibrMethod);
-        FullScreen.TextPrint({ 2, 21 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "Error correction                 : %s", 0 == gfErrorCorrection ? "disabled" : (pfnDelay == &InternalAcpiDelay ? "N/A on TIANOCORE" : "enabled"));
+		FullScreen.TextPrint({ 2, 18 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "target .XLSX                     : %s", gCfgStr_File_SaveAs);
+		FullScreen.TextPrint({ 2, 19 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "Calibration Method               : %s", gCfgStr_CalibrMethod);
+        FullScreen.TextPrint({ 2, 20 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "Error correction                 : %s", 0 == gfErrorCorrection ? "disabled" : (pfnDelay == &InternalAcpiDelay ? "N/A on TIANOCORE" : "enabled"));
 		
 		
 		if (true == gfAutoRun)
@@ -2305,7 +2496,7 @@ int main(int argc, char** argv)
 
 						if (1)
 						{
-							clock_t endsec = seconds + clock() / CLOCKS_PER_SEC;
+							clock_t endsec = (clock_t)seconds + clock() / CLOCKS_PER_SEC;
 							bool fStop = false;
 
 							for (int i = 0, l = 0; i < ELC(parms); i++)

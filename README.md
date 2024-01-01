@@ -50,6 +50,11 @@ This mode was made available to enable repeated .NSH/batch controlled
 Just watch the video: https://www.youtube.com/watch?v=hjeykqZqekc&t=27s
 
 ## Revision history
+### 20240101, v1.2.0 Build 2
+* add TSC clock speed rounding (experimental), get identical result like **CPUID leaf 0x15**-enabled platforms
+* simplify command line parameters -> remove selection of SYNCREF (synchronization reference device), SYNCTIME (synchronization time)
+	* force SYNCREF ACPI timer, force SYNCTIME 5 seconds
+* add version + build enumeration (experimental) 
 ### 20231210
 * add retrieval of [**Time Stamp Counter and Core Crystal Clock Information Leaf**](https://www.intel.com/content/dam/develop/external/us/en/documents/architecture-instruction-set-extensions-programming-reference.pdf#page=34)
 	* NOTE: On platforms with available **CPUID leaf 0x15** (Intel CPU 2017 and later) it demonstrates, that ACPI reference synchronisation is very accurate (about 0.1ppm)

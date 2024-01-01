@@ -129,7 +129,7 @@
       <BufferSecurityCheck>false</BufferSecurityCheck>
       <LanguageStandard_C>Default</LanguageStandard_C>
       <StringPooling>true</StringPooling>
-      <DisableSpecificWarnings>4100;%(DisableSpecificWarnings);4996;4189;4005;4804;4458;4162</DisableSpecificWarnings>
+      <DisableSpecificWarnings>4100;%(DisableSpecificWarnings);4996;4189;4005;4804;4458;4162;4456</DisableSpecificWarnings>
       <AdditionalIncludeDirectories>$(SolutionDir)include;$(SolutionDir)include\x64;$(SolutionDir)Visual-LIBXLSXWRITER-for-UEFI-Shell\libxlsxwriter\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <TreatWChar_tAsBuiltInType>false</TreatWChar_tAsBuiltInType>
       <LanguageStandard>stdcpp20</LanguageStandard>
@@ -155,6 +155,12 @@
     <PostBuildEvent>
       <Message>copy /y "$(OutDir)$(TargetName)$(TargetExt)" e:\</Message>
     </PostBuildEvent>
+    <PreBuildEvent>
+      <Command>BUILDNUM.BAT</Command>
+    </PreBuildEvent>
+    <PreBuildEvent>
+      <Message>UPDATE BUILD</Message>
+    </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='WINApp|x64'">
     <ClCompile>
@@ -207,10 +213,12 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="base_t.h" />
+    <ClInclude Include="BUILDNUM.h" />
     <ClInclude Include="DPRINTF.h" />
     <ClInclude Include="LibWin324UEFI.h" />
     <ClInclude Include="TextWindow.hpp" />
     <ClInclude Include="UefiBase.hpp" />
+    <ClInclude Include="VERSION.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

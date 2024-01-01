@@ -56,7 +56,7 @@ int64_t PITClkWait/*pseudo delay upcount*/(int32_t Delay)
 {
     static int cnt;
     int64_t  delay3 = Delay / 3, count = delay3, maxdrift = 0;
-    uint64_t qwTSCPerIntervall, qwTSCEnd, qwTSCStart;
+    uint64_t qwTSCPerIntervall, qwTSCEnd=0, qwTSCStart=0;
     size_t eflags = __readeflags();                     // save flaags
     int syncprogress = 1;
 
