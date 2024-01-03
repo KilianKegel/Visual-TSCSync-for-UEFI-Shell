@@ -1884,6 +1884,10 @@ int main(int argc, char** argv)
 					{
 						ll = (gTSCPerSecondReference / 10000) * 10000;
 						ll += 1111 * digit;
+						
+						if (9 == ll % 10)					// adjust X.YZ9999999 by 1
+							gTSCPerSecondRefRND += 1;
+
 						gTSCPerSecondRefRND = ll;
 						break;
 					}
