@@ -53,10 +53,11 @@ This mode was made available to enable repeated .NSH/batch controlled
 Just watch the video: https://www.youtube.com/watch?v=hjeykqZqekc&t=27s
 
 ## Revision history
-### 20240103, v1.2.1 Build 4
-* fix rounding issue for X.YZ9999999GHz values
+### 20240106, v1.2.2 Build 5
+* fixed: fix rounding issue for X.YZ9999999GHz values
 * provide .EFI executable [TSCSync.EFI](x64/EFIApp/TSCSync.efi)
 * internal: update submodules
+* internal: cleanup main.cpp
 ### 20240101, v1.2.0 Build 2
 * add TSC clock speed rounding (experimental), get identical result like **CPUID leaf 0x15**-enabled platforms
 * simplify command line parameters -> remove selection of SYNCREF (synchronization reference device), SYNCTIME (synchronization time)

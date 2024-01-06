@@ -3,7 +3,7 @@
 	TSCSync
 	https://github.com/KilianKegel/Visual-TSCSync-for-UEFI-Shell
 
-	Copyright (c) 2017-2024, Kilian Kegel. All rights reserved.
+	Copyright (c) 2023-2024, Kilian Kegel. All rights reserved.
 	SPDX-License-Identifier: GNU General Public License v3.0
 
 Module Name:
@@ -1732,98 +1732,6 @@ int main(int argc, char** argv)
 
 		gTSCPerSecondReference = (int64_t)((qwTSCEnd - qwTSCStart) / SECONDS);
 		
-        if (0)
-        {
-            uint64_t ll, digit, fac = 1000;
-
-            ll = gTSCPerSecondReference / 1000;
-
-            digit = ll % 10;
-
-            do
-            {
-                if (digit > 4)
-                    ll += (10 - digit);
-                else
-                    ll -= digit;
-
-                ll /= 10;
-                fac *= 10;
-            } while (!((digit = ll % 10) == 0)/* || fac < 1000 */);
-            
-            gTSCPerSecondRefRND = ll * fac;
-
-        }
-        
-        //
-        // crystalRND: crystal frequency rounding
-        //
-        //  NOTE: This is experimental. It deals with perodic and non-periodic frequencies
-        //
-        //    Real world frequencies sampled on my own private platforms:
-        // 	    2611200334  TGL non-periodic
-    	//      2112000247  TGL non-periodic
-	    //      1991998778  WKL non-periodic
-	    //      1113599211  JPL non-periodic
-	    //      2295690115  AMD non-periodic
-	    //      1996248576  AMD non-periodic
-        //
-        //      1333332396  BYT periodic
-        //      1866665350  BYT periodic
-        //      
-        //    Algorithm:
-        //      1) discard lowest 3 decimal digits
-        //      2) round decimal digit 4
-        //      3) get difference of gTSCPerSecondReference and gTSCPerSecondRefRND
-        //      4) if DIFF > 2000 (experimental)
-        //          I)   discard lowest 4 decimal digits of rounded gTSCPerSecondRefRND
-        //               NOTE: gTSCPerSecondRefRND lowest 3 digits are 0
-        //          II)  get rounded decimal digit 5
-        //          III) calculate original value (before rounding) of decimal digit 5
-        //          IV)  if digit 5 is periodic at digit 6 expand value to digits 4..0
-        //   
-        //        
-        //
-        if (0)
-        {
-            int64_t ll, digit;
-            int diff;
-
-            ll = gTSCPerSecondReference / 1000;
-
-            digit = ll % 10;
-
-            if (digit > 4)
-                ll += (10 - digit);
-            else
-                ll -= digit;
-
-            gTSCPerSecondRefRND = ll * 1000;
-
-            diff = abs((int)(gTSCPerSecondRefRND - gTSCPerSecondReference));
-
-            if (diff > 2000)
-            {
-                ll = gTSCPerSecondRefRND / 10000;	// get digit 5 -> 10000 position
-                digit = ll % 10;					// have digit
-
-                if (digit > 4)						// check, is it rounded up or down
-                    digit -= 1;						// up -> decrement
-
-                //
-                // check if digit is periodic at digit 6 -> 100000 position
-                //
-                if (digit == (gTSCPerSecondRefRND / 100000) % 10)
-                {
-                    gTSCPerSecondRefRND += digit * 1111;
-                    if (digit > 4)
-                        gTSCPerSecondRefRND -= 10000;
-                }
-                diff = abs((int)(gTSCPerSecondRefRND - gTSCPerSecondReference));
-            }
-
-        }
-
 		//
 		// crystalRND: crystal frequency rounding
 		//
@@ -1846,7 +1754,8 @@ int main(int argc, char** argv)
 		//    Algorithm:
 		//		1) check periodic A.BCD.EFG.HIJ
 		//			I)  check if digit "F" is repeted in digit "E" and "D"
-		//			II) if so, repeat digit "F" in digits "GHIF", finish
+		//			II) if so, repeat digit "F" in digits "GHIJ", finish
+		//			III)if digit "J" == 9, add 1 (e.g. 1.999999999 -> 2.000000000)
 		//		2) 3 digit kilo range rounding A.BCD.EFG.HIJ
 		//			I)  round "EFG"
 		//			II)	if difference of rounded "EFG" and original "EFG" < 20
@@ -1886,7 +1795,7 @@ int main(int argc, char** argv)
 						ll += 1111 * digit;
 						
 						if (9 == ll % 10)					// adjust X.YZ9999999 by 1
-							gTSCPerSecondRefRND += 1;
+							ll += 1;
 
 						gTSCPerSecondRefRND = ll;
 						break;
@@ -1972,26 +1881,6 @@ int main(int argc, char** argv)
 	}
 
 	//
-	//	determine processor speed within 250ms second
-	//
-	if (0)
-	{
-		char buffer[128] = "Determining processor speed ...";
-		//printf("%s", buffer);
-
-		clock_t endCLK = CLOCKS_PER_SEC / 4 + clock();
-		uint64_t endTSC, startTSC = __rdtsc();
-
-		while (endCLK > clock())
-			;
-		endTSC = __rdtsc();
-
-		sprintf(buffer, "%lld", 4 * (endTSC - startTSC));
-
-		sprintf(gstrCPUSpeed, "%lldHz, ~%lldHz, %c.%c%cGHz", gTSCPerSecondReference, gTSCPerSecondRefRND, buffer[0], buffer[1], buffer[2]);
-	}
-
-	//
 	//	determine processor speed by MSR_PLATFORM_INFO -- Intel only
 	//
 	if (0x8086 == ((uint16_t*)pMCFG->BaseAddress)[0]) do
@@ -2049,8 +1938,8 @@ int main(int argc, char** argv)
 					/*index11 */ wcsCalibMethod[gfCfgMngMnuItm_Config_CalibMethodSelectTIANOACPI][0],
 					/*index12 */ wcsCalibMethod[gfCfgMngMnuItm_Config_CalibMethodSelectTSCSYNCPIT][1],
 					/*index13 */ wcsCalibMethod[gfCfgMngMnuItm_Config_CalibMethodSelectTSCSYNCACPI][2],
-					/*index10 */ wcsSeparator17,
-					/*index10 */ wcsErrorCorrection[pfnDelay == &InternalAcpiDelay ? 2 : gfErrorCorrection][0],
+					/*index14 */ wcsSeparator17,
+					/*index15 */ wcsErrorCorrection[pfnDelay == &InternalAcpiDelay ? 2 : gfErrorCorrection][0],
 				},
 				{
 					/*index 3 */ &fnMnuItm_Config_ACPIDelaySelect1,
@@ -2064,8 +1953,8 @@ int main(int argc, char** argv)
 					/*index11 */ &fnMnuItm_Config_CalibMethodSelectTIANOACPI,
 					/*index12 */ &fnMnuItm_Config_CalibMethodSelectTSCSYNCPIT,
 					/*index13 */ &fnMnuItm_Config_CalibMethodSelectTSCSYNCACPI,
-					/*index10 */ nullptr/* nullptr identifies SEPARATOR */,
-					/*index10 */ gfCfgMngMnuItm_Config_CalibMethodSelectTIANOACPI ? nullptr : fnMnuItm_Config_ErrorCorrection/* nullptr identifies SEPARATOR */,
+					/*index14 */ nullptr/* nullptr identifies SEPARATOR */,
+					/*index15 */ gfCfgMngMnuItm_Config_CalibMethodSelectTIANOACPI ? nullptr : fnMnuItm_Config_ErrorCorrection/* nullptr identifies SEPARATOR */,
 					}
 				},
 			{{15,0},	L" RUN  ",		nullptr,{20,3/* # menuitems + 2 */},	/*{false, false},*/ {L"Run CONFIG      "},{&fnMnuItm_RunConfig_0}},
