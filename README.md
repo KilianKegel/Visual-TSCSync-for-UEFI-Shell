@@ -53,6 +53,10 @@ This mode was made available to enable repeated .NSH/batch controlled
 Just watch the video: https://www.youtube.com/watch?v=hjeykqZqekc&t=27s
 
 ## Revision history
+### 20240113, v1.2.3 Build 8
+* add 10000kHz digit rounding, e.g.
+	* **1995379567** is rounded to **1995380000**
+	* **1995371234** is rounded to **1995370000**
 ### 20240106, v1.2.2 Build 5
 * fixed: fix rounding issue for X.YZ9999999GHz values
 * provide .EFI executable [TSCSync.EFI](x64/EFIApp/TSCSync.efi)

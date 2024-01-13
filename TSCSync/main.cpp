@@ -1859,6 +1859,37 @@ int main(int argc, char** argv)
 						break;
 					}
 				}
+
+				//
+				// 1 digit kilo range rounding
+				//
+				if (1)
+				{
+					int64_t gigamega10krange = (gTSCPerSecondReference / 10000) * 10000;//4 zeros
+					int64_t kilorange1dgt = ((gTSCPerSecondReference / 1000) * 1000 - gigamega10krange) / 1000;
+					int64_t kiloRND = kilorange1dgt;
+					int d, digit, diff, x;
+
+					for (x = 0, kiloRND = kilorange1dgt, digit = 1; x < 1/*one*/; x++, digit *= 10)
+					{
+						d = (kiloRND / digit) % 10;
+
+						if (d > 4)
+							kiloRND += digit * (10 - d);
+						else
+							kiloRND -= digit * d;
+					}
+
+					diff = abs((int)(kiloRND - kilorange1dgt));
+
+					gTSCPerSecondRefRND = (gTSCPerSecondReference / 1000) * 1000;
+
+					if (diff < 2)
+					{
+						gTSCPerSecondRefRND = gigamega10krange + kiloRND * 1000;
+						break;
+					}
+				}
 			} while (0);
 		}
 
