@@ -53,6 +53,9 @@ This mode was made available to enable repeated .NSH/batch controlled
 Just watch the video: https://www.youtube.com/watch?v=hjeykqZqekc&t=27s
 
 ## Revision history
+### 20240316, v1.2.4 Build 10
+* add feature:
+	* **FILE->SoftOFF/S5**, set platform to SoftOFF/S5
 ### 20240113, v1.2.3 Build 8
 * add 10000kHz digit rounding, e.g.
 	* **1995379567** is rounded to **1995380000**

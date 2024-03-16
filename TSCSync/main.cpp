@@ -60,6 +60,8 @@ Author:
 #include "VERSION.h"
 #include "BUILDNUM.h"
 
+extern "C" __declspec(dllimport) UINT GetSystemFirmwareTable(/*[in]*/  DWORD FirmwareTableProviderSignature,	/*[in] */ DWORD FirmwareTableID,	/*[out]*/ PVOID pFirmwareTableBuffer,	/*[in] */ DWORD BufferSize);
+
 extern "C" EFI_SYSTEM_TABLE * _cdegST;
 extern "C" EFI_SYSTEM_TABLE * gSystemTable;
 extern "C" EFI_HANDLE gImageHandle;
@@ -299,6 +301,8 @@ int rtcrd(int idx)
 //
 // globally shared data
 //
+uint16_t gPm1aCntBlkAddr;
+bool gfSwitchOff = false;
 bool gfExit = false;
 bool gfSaveExit = false;
 bool gfHexView = false;
@@ -331,6 +335,19 @@ int  gnCfgRefSyncTime = 5;		//sync time/delay
 /////////////////////////////////////////////////////////////////////////////
 // FILE menu functions and strings
 /////////////////////////////////////////////////////////////////////////////
+int fnMnuItm_File_SwitchOff(CTextWindow* pThis, void* pContext, void* pParm)
+{
+	int nRet = 0;
+
+	if (0 == strcmp("ENTER", (char*)pParm))				// Enter?
+	{
+		pThis->TextPrint({ 20,20 }, "fnMnuItm_File_Exit...");
+		gfExit = true;
+		gfSwitchOff = true;
+	}
+	return 0;
+}
+
 int fnMnuItm_File_Exit(CTextWindow* pThis, void* pContext, void* pParm)
 {
 	int nRet = 0;
@@ -1278,6 +1295,7 @@ int main(int argc, char** argv)
 	gSystemTable = (EFI_SYSTEM_TABLE*)(argv[-1]);		//SystemTable is passed in argv[-1]
 	gImageHandle = (void*)(argv[-2]);					//ImageHandle is passed in argv[-2]
 	TEXT_KEY key = NO_KEY;
+	uint8_t S5Val = 0;
 
     if (0)
 	{
@@ -1310,9 +1328,27 @@ int main(int argc, char** argv)
 	sprintf(gACPIPmTmrBlkSize, "%sBit", (0 != (pFACP->Flags & (1 << 8))) ? "32" : "24");
 
 	gPmTmrBlkAddr = static_cast<uint16_t> (pFACP->PmTmrBlk);				// save ACPI timer base adress
+	gPm1aCntBlkAddr = (uint16_t)pFACP->Pm1aCntBlk;
 
+	//
+	// get DSDT to find S5 SLP_TYP
+	//
+	if (1)
+	{
+		static uint8_t DSDT[1024 * 1024],*pStart = &DSDT[0];
+		uint32_t i,len = GetSystemFirmwareTable('ACPI', 'TDSD', &DSDT[0], sizeof(DSDT));
 
-    //
+		for (i = 0; i < len; i++)
+		{
+				if ((0x5F == pStart[i + 0]) && (0x53 == pStart[i + 1]) && (0x35 == pStart[i + 2]))// find '_S5' in DSDT
+				{
+					S5Val = pStart[i + 8];
+					break;
+				}
+		}
+	}
+
+	//
     // Initialize PIT timer channel 2
     //
     _outp(0x61, 0);                          // stop counter
@@ -1952,10 +1988,12 @@ int main(int argc, char** argv)
 
 		menu_t menu[] =
 		{
-			{{ 1,0},	L" FILE ",		nullptr,{43,6/* # menuitems + 2 */},	/*{false},*/ {	L"Save series of measurements as .XLSX...",
+			{{ 1,0},	L" FILE ",		nullptr,{43,7/* # menuitems + 2 */},	/*{false},*/ {	L"Save series of measurements as .XLSX...",
 																								wcsSeparator17,
 																								L"Exit...                                ",
-																								L"Save and Exit...                       "},{&fnMnuItm_File_SaveAs, nullptr, &fnMnuItm_File_Exit,&fnMnuItm_File_SaveExit}},
+																								L"Save and Exit...                       ",
+																								L"SoftOFF/S5...                          "},
+																							{&fnMnuItm_File_SaveAs, nullptr, &fnMnuItm_File_Exit,&fnMnuItm_File_SaveExit,&fnMnuItm_File_SwitchOff}},
 			{{ 8,0},	L" CONF ",	nullptr,{38,15	/* # menuitems + 2 */},	/*{false, false, true, false},*/
 				{
 					/*index 3 */ wcsTimerDelayAcpiStrings[gfCfgMngMnuItm_Config_ACPIDelaySelect1][0],	/* selected by default menu strings */
@@ -2552,6 +2590,12 @@ int main(int argc, char** argv)
 
 	} while (false == gfExit);
 
+	if (gfSwitchOff)
+	{
+		_outp(gPm1aCntBlkAddr + 1, (S5Val | 8) << 2);
+		printf("gPm1aCntBlkAddr %04X, S5VAL %2X\n", gPm1aCntBlkAddr, (S5Val | 8) << 2);
+		getchar();
+	}
 	//
 	// save modified config, always modified or not
 	//
