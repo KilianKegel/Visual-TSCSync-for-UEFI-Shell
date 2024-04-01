@@ -1,6 +1,8 @@
 # Visual-TSCSync-for-UEFI-Shell
 TSCSync - TimeStampCounter (TSC) synchronizer,  analyze System Timer characteristics
 
+![TSCSyncDemo](TSCSyncDemo.gif)
+
 ![TSCSyncStart](TSCSyncStart.png)
 
 ![TSCSyncAbout](TSCSyncAbout.png)
@@ -53,6 +55,10 @@ This mode was made available to enable repeated .NSH/batch controlled
 Just watch the video: https://www.youtube.com/watch?v=hjeykqZqekc&t=27s
 
 ## Revision history
+### 20240401, v1.3.0 Build 50
+* add **AMI APTIO V** UEFI timestamp protocol calibration drift demonstration:
+	* **RUN->Run DRIFT TEST**, to start the demo
+    ![DRIFT TEST](DriftTest.gif)
 ### 20240316, v1.2.4 Build 10
 * add feature:
 	* **FILE->SoftOFF/S5**, set platform to SoftOFF/S5

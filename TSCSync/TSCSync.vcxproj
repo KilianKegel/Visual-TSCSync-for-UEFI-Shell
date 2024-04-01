@@ -130,7 +130,7 @@
       <LanguageStandard_C>Default</LanguageStandard_C>
       <StringPooling>true</StringPooling>
       <DisableSpecificWarnings>4100;%(DisableSpecificWarnings);4996;4189;4005;4804;4458;4162;4456</DisableSpecificWarnings>
-      <AdditionalIncludeDirectories>$(SolutionDir)include;$(SolutionDir)include\x64;$(SolutionDir)Visual-LIBXLSXWRITER-for-UEFI-Shell\libxlsxwriter\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)include;$(SolutionDir)include\x64;$(SolutionDir)Visual-LIBXLSXWRITER-for-UEFI-Shell\libxlsxwriter\include;$(SolutionDir)Visual-TORO-C-LIBRARY-for-UEFI\CdePkg\Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <TreatWChar_tAsBuiltInType>false</TreatWChar_tAsBuiltInType>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <DebugInformationFormat>None</DebugInformationFormat>

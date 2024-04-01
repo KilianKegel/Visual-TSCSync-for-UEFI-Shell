@@ -101,6 +101,9 @@ extern "C" WINBASEAPI uint64_t WINAPI GetTickCount64(VOID);
 extern void (*rgcbAtUpdate[32])(void* pThis, void* pBox, void* pContext, void* pParm);
 extern void* rgcbAtUpdateParms[32][3];	// array of parameters: void* pThis, void* pBox, void* pContext
 extern "C" char* _strefierror(EFI_STATUS);
+extern "C" void * __cdeGetAppIf(void);
+#include <CdeServices.h>
+
 
 #define TYPE char
 #define TYPESIZE sizeof(TYPE)
@@ -302,11 +305,16 @@ int rtcrd(int idx)
 // globally shared data
 //
 uint16_t gPm1aCntBlkAddr;
+time_t	gTimeAtSystemStart;
+int64_t	gTSCAtSystemStart;
+int64_t gTSClocksPerSecDRIFTED;
+uint64_t gTSClocksAtDriftTestStart;
 bool gfSwitchOff = false;
 bool gfExit = false;
 bool gfSaveExit = false;
 bool gfHexView = false;
 bool gfRunConfig = false;
+bool gfRunDriftTest = false;
 bool gfAutoRun = false;
 
 bool gfStatusLineVisible;
@@ -1289,6 +1297,30 @@ int fnMnuItm_RunConfig_0(CTextWindow* pThis, void* pContext, void* pParm)
 	return 0;
 }
 
+int fnMnuItm_RunDriftTest_0(CTextWindow* pThis, void* pContext, void* pParm)
+{
+	CDE_APP_IF* pCdeAppIf = (CDE_APP_IF*)__cdeGetAppIf();
+	CTextWindow* pRoot = pThis->TextWindowGetRoot();
+
+	gfRunDriftTest = true;
+//
+// NOTE: The drift test requires "toro C Library"-internal functions, that are not available with ANSI C.
+// 
+	
+	//
+	// wait for begin of new second
+	//
+	gTimeAtSystemStart = pCdeAppIf->pCdeServices->pGetTime(pCdeAppIf);
+	
+	while (pCdeAppIf->pCdeServices->pGetTime(pCdeAppIf) == gTimeAtSystemStart)
+		;
+	gTimeAtSystemStart = pCdeAppIf->pCdeServices->pGetTime(pCdeAppIf);
+	gTSCAtSystemStart = pCdeAppIf->pCdeServices->pGetTsc(pCdeAppIf);
+
+	pThis->TextClearWindow(pRoot->WinAtt);
+	return 0;
+}
+
 int main(int argc, char** argv)
 {
 	int nRet = 1;
@@ -1991,9 +2023,9 @@ int main(int argc, char** argv)
 			{{ 1,0},	L" FILE ",		nullptr,{43,7/* # menuitems + 2 */},	/*{false},*/ {	L"Save series of measurements as .XLSX...",
 																								wcsSeparator17,
 																								L"Exit...                                ",
-																								L"Save and Exit...                       ",
-																								L"SoftOFF/S5...                          "},
-																							{&fnMnuItm_File_SaveAs, nullptr, &fnMnuItm_File_Exit,&fnMnuItm_File_SaveExit,&fnMnuItm_File_SwitchOff}},
+																								L"SoftOFF/S5...                          ",
+																								L"Save and Exit...                       "},
+																							{&fnMnuItm_File_SaveAs, nullptr, &fnMnuItm_File_Exit,&fnMnuItm_File_SwitchOff,&fnMnuItm_File_SaveExit}},
 			{{ 8,0},	L" CONF ",	nullptr,{38,15	/* # menuitems + 2 */},	/*{false, false, true, false},*/
 				{
 					/*index 3 */ wcsTimerDelayAcpiStrings[gfCfgMngMnuItm_Config_ACPIDelaySelect1][0],	/* selected by default menu strings */
@@ -2026,7 +2058,7 @@ int main(int argc, char** argv)
 					/*index15 */ gfCfgMngMnuItm_Config_CalibMethodSelectTIANOACPI ? nullptr : fnMnuItm_Config_ErrorCorrection/* nullptr identifies SEPARATOR */,
 					}
 				},
-			{{15,0},	L" RUN  ",		nullptr,{20,3/* # menuitems + 2 */},	/*{false, false},*/ {L"Run CONFIG      "},{&fnMnuItm_RunConfig_0}},
+			{{15,0},	L" RUN  ",		nullptr,{20,4/* # menuitems + 2 */},	/*{false, false},*/ {L"Run CONFIG      ",L"Run DRIFT TEST  "},{&fnMnuItm_RunConfig_0,&fnMnuItm_RunDriftTest_0}},
 			{{22,0},	L" VIEW ",		nullptr,{23,5/* # menuitems + 2 */},	/*{false},*/ {L"System Information ",L"Clock              ",L"Calendar           " },{&fnMnuItm_View_SysInfo,&fnMnuItm_View_Clock,&fnMnuItm_View_Calendar}},
 			{{29,0},	L" HELP ",		nullptr,{20,4/* # menuitems + 2 */},	/*{false, false},*/ {L"About           ",L"KEYBOARD DEBUG  "},{&fnMnuItm_About_0, &fnMnuItm_About_1 }},
 		};
@@ -2056,6 +2088,7 @@ int main(int argc, char** argv)
 				&wcsTitle[0]
 			);
 		}
+
 		//
 		// draw the menu strings
 		//
@@ -2230,6 +2263,11 @@ int main(int argc, char** argv)
 					// clear STATUS BAR by setting blink:=0
 					//
 					blink = 0;
+
+					//
+					// stop currently running activity
+					//
+					gfRunDriftTest = false,
 
 					state = MENU_IS_ACTIVE;
 					break;
@@ -2410,7 +2448,117 @@ int main(int argc, char** argv)
 							FullScreen.TextBlockDraw({ 5,13 }, EFI_BACKGROUND_RED | EFI_WHITE, L"...");
 						}
 					}//while(1)
-					
+
+					if (gfRunDriftTest)
+					{ 
+						CDE_APP_IF* pCdeAppIf = (CDE_APP_IF*)__cdeGetAppIf();						// get access to CdePkg internally
+						time_t RTCtime64=time(NULL);												// pre-initialize RTC time with Date from Standard C Time
+						int bcdsec = rtcrd(0);
+						int bcdmin = rtcrd(2);
+						int bcdhour = rtcrd(4);
+						int hour = (bcdhour / 16) * 10 + (bcdhour & 0x0F);
+						int min = (bcdmin / 16) * 10 + (bcdmin & 0x0F);
+						int sec = (bcdsec / 16) * 10 + (bcdsec & 0x0F);
+						time_t runtime;
+
+						struct tm* pRTCtm = localtime(&RTCtime64);								// convert RTCtime64 to structure
+
+						pRTCtm->tm_hour = hour;
+						pRTCtm->tm_min = min;
+						pRTCtm->tm_sec = sec;
+
+						RTCtime64 = mktime(pRTCtm);
+
+						runtime = (time_t)difftime(RTCtime64, gTimeAtSystemStart);
+
+						struct tm* pRUNtm = localtime(&runtime);
+
+						FullScreen.TextBlockDraw({ (FullScreen.WinDim.X - (int32_t)strlen("UEFI TIMESTAMP PROTOCOL SYNCHRONOUS RUN TEST"))/2 ,4}, EFI_BACKGROUND_LIGHTGRAY | EFI_WHITE, "UEFI TIMESTAMP PROTOCOL SYNCHRONOUS RUN TEST");
+
+						FullScreen.TextBlockDraw({ (FullScreen.WinDim.X - (int32_t)strlen("running for HH:MM:SS hours")) / 2,5 }, EFI_BACKGROUND_LIGHTGRAY | EFI_WHITE, "running for %02d:%02d:%02d hours",
+							pRUNtm->tm_hour,
+							pRUNtm->tm_min,
+							pRUNtm->tm_sec
+						);
+
+						//
+						// RTC bare metal access -- directly read hh:mm:ss from RTC chip
+						//
+						if (1) 
+						{
+
+
+							FullScreen.TextBlockDraw({ 2,8 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "              bare metal RTC time: %02X:%02X:%02X",
+								bcdhour,	// RTC hour 
+								bcdmin,		// RTC minute
+								bcdsec		// RTC seconds
+							);
+						}
+
+						//
+						// toro C Library Standard C time, synchronized during startup whithin 52ms
+						//
+						if (1)
+						{
+							time_t time64= time(NULL);
+
+							struct tm* ptm = localtime(&time64);
+
+							FullScreen.TextBlockDraw({ 2,10 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "   toro C Library Standard C time: %02d:%02d:%02d, %3dsec diff",
+								ptm->tm_hour,
+								ptm->tm_min,
+								ptm->tm_sec,
+								(int)difftime(time64, RTCtime64)
+							);
+						}
+
+						//
+						// TIMESTAMP_PROTOCOL drifted time
+						//
+						if (gTIMESTAMP_PROTOCOLPerSec)
+						{
+							double TSC = (double)pCdeAppIf->pCdeServices->pGetTsc(pCdeAppIf);
+							double STA = (double)gTSCAtSystemStart;
+							double TSCFRQ = (double)gTIMESTAMP_PROTOCOLPerSec;
+							double DriftSecSinceStart = (TSC - STA) * TSCFRQ / (gTSCPerSecondRefRND * gTSCPerSecondRefRND);
+							time_t drift = gTimeAtSystemStart + (time_t)DriftSecSinceStart;
+							struct tm* ptm = localtime(&drift);
+							time_t time64 = mktime(ptm);
+
+							FullScreen.TextBlockDraw({ 2,12 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "  TIMESTAMP_PROTOCOL drifted time: %02d:%02d:%02d, %3dsec diff",
+								ptm->tm_hour,
+								ptm->tm_min,
+								ptm->tm_sec,
+								(int)difftime(time64, RTCtime64)
+							);
+						}else
+							FullScreen.TextBlockDraw({ 2,12 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "  TIMESTAMP_PROTOCOL drifted time: N/A");
+
+
+
+						//
+						// TSCSYNC high precision TSC Per Second Referece Rounded
+						//
+						if (1)
+						{
+							double TSC = (double)pCdeAppIf->pCdeServices->pGetTsc(pCdeAppIf);
+							double STA = (double)gTSCAtSystemStart;
+							double TSCFRQ = (double)gTSCPerSecondRefRND;
+							double DriftSecSinceStart = (TSC - STA) * TSCFRQ / (gTSCPerSecondRefRND * gTSCPerSecondRefRND);
+							time_t drift = gTimeAtSystemStart + (time_t)DriftSecSinceStart;
+							struct tm* ptm = localtime(&drift);
+							time_t time64 = mktime(ptm);
+
+							FullScreen.TextBlockDraw({ 2,14 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "  TSCSYNC high precision ref time: %02d:%02d:%02d, %3dsec diff",
+								ptm->tm_hour,
+								ptm->tm_min,
+								ptm->tm_sec,
+								(int)difftime(time64, RTCtime64)
+							);
+						}
+
+					}//if (gfRunDriftTest)
+
 					if (gfRunConfig)
 					{
 						uint64_t seconds = 0;
