@@ -55,6 +55,11 @@ This mode was made available to enable repeated .NSH/batch controlled
 Just watch the video: https://www.youtube.com/watch?v=hjeykqZqekc&t=27s
 
 ## Revision history
+### 20240406, v1.3.1 Build 79
+* distinguish RTC and ACPI based frequency detection
+	* NOTE: ACPI frequency lacks precision as long term time base
+		- RTC usually uses a separate 32.768kHz crystal with low drift (e.g. 2ppm)
+		- CPU/SoC (ACPI) OSC is usually driven by a MHz-oscillator (e.g. 25MHz) that doesn't have high precision and low drift requirements as the REAL TIME CLOCK
 ### 20240401, v1.3.0 Build 50
 * add **AMI APTIO V** UEFI timestamp protocol calibration drift demonstration:
 	* **RUN->Run DRIFT TEST**, to start the demo

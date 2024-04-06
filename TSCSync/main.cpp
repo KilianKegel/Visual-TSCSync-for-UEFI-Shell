@@ -116,7 +116,7 @@ extern "C" void * __cdeGetAppIf(void);
 
 #define IODELAY _outp(0xED, 0x55)
 
-int64_t gTSCPerSecondReference, gTSCPerSecondRefRND;    //TSC per second / rounded
+int64_t gTSCPerSecACPI, gTSCPerSecACPIRnd, gTSCPerSecRTC ;    //TSC per second / rounded
 
 static const char buildtimestamp[] =
 {
@@ -193,10 +193,12 @@ char gstrCPUIDSig[128];
 char gstrCPUIDFam[128];
 char gstrCPUIDMod[128];
 char gstrCPUIDStp[128];
-char gstrCPUSpeed[128];
+char gstrCPUSpeedRTC[128];
+char gstrCPUSpeedACPI[128];
 char gstrCPUSpeedRND[128];							// rounded crystal frequency
 char gstrCPUPLATFORM_INFOSpeed[128] = { "N/A" };	// detremined by MSR_PLATFORM_INFO
 char gstrCPUIDSpeed[128] = { "N/A" };				// detremined by CPUID leaf 15
+int64_t gRTCvsCPUSecDriftPer100Day;
 int64_t gTIMESTAMP_PROTOCOLPerSec;
 int64_t gTIMESTAMP_PROTOCOLSecDriftPerDay;
 char gstrTIMESTAMP_PROTOCOL[128];
@@ -337,8 +339,8 @@ bool gfCfgMngMnuItm_View_Clock = true;
 bool gfCfgMngMnuItm_View_Calendar = true;
 char gCfgStr_File_SaveAs[256] = "default.xlsx";
 char gCfgStr_CalibrMethod[64] = "original TIANOCORE";
-int gfCfgSyncRef012 = 0;		//0 -> ACPI, 1 -> RTC, 2 -> i8254
-int  gnCfgRefSyncTime = 5;		//sync time/delay
+int gfCfgSyncRef012 = 1;		//0 -> ACPI, 1 -> RTC, 2 -> i8254
+int  gnCfgRefSyncTime = 1;		//sync time/delay
 
 /////////////////////////////////////////////////////////////////////////////
 // FILE menu functions and strings
@@ -602,24 +604,27 @@ int fnMnuItm_File_SaveAs(CTextWindow* pThis, void* pContext, void* pParm)
 				sprintf(strtmp, "TSCSync generated Excel Table\n\nAnalyzing platform timer characteristics\n\n"), worksheet_write_string(worksheet, CELL("B1"), strtmp, bold);
 				sprintf(strtmp, "ACPI OemId: %s", gstrACPIOemId), worksheet_write_string(worksheet, CELL("B2"), strtmp, bold);
 				sprintf(strtmp, "ACPI OemTableId: %s", gstrACPIOemTableId), worksheet_write_string(worksheet, CELL("B3"), strtmp, bold);
-				sprintf(strtmp, "ACPI Timer Address: %s", gstrACPIPmTmrBlkAddr), worksheet_write_string(worksheet, CELL("B4"), strtmp, bold);
+				sprintf(strtmp, "ACPI Timer I/O Address: %s", gstrACPIPmTmrBlkAddr), worksheet_write_string(worksheet, CELL("B4"), strtmp, bold);
 				sprintf(strtmp, "ACPI Timer Size: %s", gACPIPmTmrBlkSize), worksheet_write_string(worksheet, CELL("B5"), strtmp, bold);
 				sprintf(strtmp, "ACPI PCIEBase: %s", gACPIPCIEBase), worksheet_write_string(worksheet, CELL("B6"), strtmp, bold);
 				sprintf(strtmp, "Vendor CPUID: %s", gstrCPUID0), worksheet_write_string(worksheet, CELL("B7"), strtmp, bold);
 				sprintf(strtmp, "HostBridge VID:DID: %02X:%02X",((uint16_t*)pMCFG->BaseAddress)[0],((uint16_t*)pMCFG->BaseAddress)[1]), worksheet_write_string(worksheet, CELL("B8"), strtmp, bold);
 				sprintf(strtmp, "CPUID Signature: %s", gstrCPUIDSig), worksheet_write_string(worksheet, CELL("B9"), strtmp, bold);
-				sprintf(strtmp, "CPU Speed(measured): %s", gstrCPUSpeed), worksheet_write_string(worksheet, CELL("B10"), strtmp, bold);
-				sprintf(strtmp, "CPU Speed(rounded) : %s", gstrCPUSpeedRND), worksheet_write_string(worksheet, CELL("B11"), strtmp, bold);
-				sprintf(strtmp, "CPU Speed(CPUID 15): %s", gstrCPUIDSpeed), worksheet_write_string(worksheet, CELL("B12"), strtmp, bold);
-				sprintf(strtmp, "CPU Speed(MSR 0xCE): %s", gstrCPUPLATFORM_INFOSpeed), worksheet_write_string(worksheet, CELL("B13"), strtmp, bold);
-				sprintf(strtmp, "CPU Speed(EFI_TIMESTAMP_PROTOCOL): %s", gstrTIMESTAMP_PROTOCOL), worksheet_write_string(worksheet, CELL("B14"), strtmp, bold);
+				sprintf(strtmp, "CPU Speed(reference timer RTC): %s", gstrCPUSpeedRTC), worksheet_write_string(worksheet, CELL("B10"), strtmp, bold);
+				sprintf(strtmp, "CPU Speed(reference timer ACPI): %s", gstrCPUSpeedACPI), worksheet_write_string(worksheet, CELL("B11"), strtmp, bold);
+				sprintf(strtmp, "CPU Speed(rounded ACPI) : %s", gstrCPUSpeedRND), worksheet_write_string(worksheet, CELL("B12"), strtmp, bold);
+				sprintf(strtmp, "CPU Speed(CPUID 15): %s", gstrCPUIDSpeed), worksheet_write_string(worksheet, CELL("B13"), strtmp, bold);
+				sprintf(strtmp, "CPU Speed(MSR 0xCE): %s", gstrCPUPLATFORM_INFOSpeed), worksheet_write_string(worksheet, CELL("B14"), strtmp, bold);
+				sprintf(strtmp, "CPU Speed(EFI_TIMESTAMP_PROTOCOL): %s", gstrTIMESTAMP_PROTOCOL), worksheet_write_string(worksheet, CELL("B15"), strtmp, bold);
 				if (0 != strncmp(gstrTIMESTAMP_PROTOCOL, "N/A", strlen("N/A")))
-					sprintf(strtmp, "    EFI_TIMESTAMP_PROTOCOL drift : %llds per day", gTIMESTAMP_PROTOCOLSecDriftPerDay), worksheet_write_string(worksheet, CELL("B15"), strtmp, bold);
-				sprintf(strtmp, "target .XLSX: %s", gCfgStr_File_SaveAs), worksheet_write_string(worksheet, CELL("B17"), strtmp, bold);
+					sprintf(strtmp, "    EFI_TIMESTAMP_PROTOCOL drift : %llds per day", gTIMESTAMP_PROTOCOLSecDriftPerDay), worksheet_write_string(worksheet, CELL("B16"), strtmp, bold);
+				sprintf(strtmp, "          RTC vs CPU clock drift : %lld.%llds per day",gRTCvsCPUSecDriftPer100Day / 100,gRTCvsCPUSecDriftPer100Day / 10 - (gRTCvsCPUSecDriftPer100Day / 100) * 10), worksheet_write_string(worksheet, CELL("B17"), strtmp, bold);
+
+				sprintf(strtmp, "target .XLSX: %s", gCfgStr_File_SaveAs), worksheet_write_string(worksheet, CELL("B19"), strtmp, bold);
 				//sprintf(strtmp, "RefTimerDev: %s", 2 == gfCfgSyncRef012 ? "i8254" : (1 == gfCfgSyncRef012 ? "RTC" : "ACPI")), worksheet_write_string(worksheet, CELL("B18"), strtmp, bold);//0 -> ACPI, 1 -> RTC, 2 -> PIT
 				//sprintf(strtmp, "RefSyncTime: %ds", gnCfgRefSyncTime), worksheet_write_string(worksheet, CELL("B17"), strtmp, bold);
-				sprintf(strtmp, "Calibration Method: %s", gCfgStr_CalibrMethod), worksheet_write_string(worksheet, CELL("B18"), strtmp, bold);
-				sprintf(strtmp, "Error correction: %s", 0 == gfErrorCorrection ? "disabled" : (pfnDelay == &InternalAcpiDelay ? "N/A on TIANOCORE" : "enabled")), worksheet_write_string(worksheet, CELL("B19"), strtmp, bold);
+				sprintf(strtmp, "Calibration Method: %s", gCfgStr_CalibrMethod), worksheet_write_string(worksheet, CELL("B20"), strtmp, bold);
+				sprintf(strtmp, "Error correction: %s", 0 == gfErrorCorrection ? "disabled" : (pfnDelay == &InternalAcpiDelay ? "N/A on TIANOCORE" : "enabled")), worksheet_write_string(worksheet, CELL("B21"), strtmp, bold);
 
 			}
 
@@ -700,7 +705,7 @@ int fnMnuItm_File_SaveAs(CTextWindow* pThis, void* pContext, void* pParm)
 
 				}
 				chart_title_set_name(chart, "Overall preview, drift in seconds per day. Parameter:\nCalibration time");
-				worksheet_insert_chart(worksheet, CELL("B20"), chart);
+				worksheet_insert_chart(worksheet, CELL("B25"), chart);
 			}
 
             //
@@ -744,7 +749,7 @@ int fnMnuItm_File_SaveAs(CTextWindow* pThis, void* pContext, void* pParm)
 
                 chartsheet_set_landscape(chartsheet1);
 
-                worksheet_insert_chart(worksheet, CELL("B36"), chart);
+                worksheet_insert_chart(worksheet, CELL("B41"), chart);
             }
 
 			//
@@ -860,23 +865,30 @@ int fnMnuItm_View_SysInfo(CTextWindow* pThis, void* pContext, void* pParm)
 		// 
 		pRoot->TextPrint({ 2, 2 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK,  "ACPI OemId                       : %s", gstrACPIOemId);
 		pRoot->TextPrint({ 2, 3 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK,  "ACPI OemTableId                  : %s", gstrACPIOemTableId);
-		pRoot->TextPrint({ 2, 4 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK,  "ACPI Timer Address               : %s", gstrACPIPmTmrBlkAddr);
-		pRoot->TextPrint({ 2, 5 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK,  "ACPI Timer Size                  : %s", gACPIPmTmrBlkSize);
-		pRoot->TextPrint({ 2, 6 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK,  "ACPI PCIEBase                    : %s", gACPIPCIEBase);
+		pRoot->TextPrint({ 2, 4 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK,  "ACPI Timer I/O Address           : %s", gstrACPIPmTmrBlkAddr);
+		//pRoot->TextPrint({ 2, 5 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK,  "ACPI Timer Size                  : %s", gACPIPmTmrBlkSize);
+		pRoot->TextPrint({ 2, 5 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK,  "ACPI PCIEBase                    : %s", gACPIPCIEBase);
 
-		pRoot->TextPrint({ 2,  8 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "Vendor CPUID                     : %s", gstrCPUID0);
-		pRoot->TextPrint({ 2,  9 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "HostBridge VID:DID               : %02X:%02X",
+		pRoot->TextPrint({ 2,  7 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "Vendor CPUID                     : %s", gstrCPUID0);
+		pRoot->TextPrint({ 2,  8 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "HostBridge VID:DID               : %02X:%02X",
 			((uint16_t*)pMCFG->BaseAddress)[0],
 			((uint16_t*)pMCFG->BaseAddress)[1]
 		);
-		pRoot->TextPrint({ 2, 10 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "CPUID Signature                  : %s", gstrCPUIDSig);
-		pRoot->TextPrint({ 2, 11 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "CPU Speed(measured)              : %s", gstrCPUSpeed);
-		pRoot->TextPrint({ 2, 12 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "CPU Speed(rounded)               : %s", gstrCPUSpeedRND);
+		pRoot->TextPrint({ 2,  9 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "CPUID Signature                  : %s", gstrCPUIDSig);
+		pRoot->TextPrint({ 2, 10 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "CPU Speed(reference timer RTC)   : %s", gstrCPUSpeedRTC);
+		pRoot->TextPrint({ 2, 11 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "CPU Speed(reference timer ACPI)  : %s", gstrCPUSpeedACPI);
+		pRoot->TextPrint({ 2, 12 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "CPU Speed(rounded ACPI)          : %s", gstrCPUSpeedRND);
 		pRoot->TextPrint({ 2, 13 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "CPU Speed(CPUID 15)              : %s", gstrCPUIDSpeed);
 		pRoot->TextPrint({ 2, 14 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "CPU Speed(MSR 0xCE)              : %s", gstrCPUPLATFORM_INFOSpeed);
-		pRoot->TextPrint({ 2, 16 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "CPU Speed(EFI_TIMESTAMP_PROTOCOL): %s", gstrTIMESTAMP_PROTOCOL);
+		pRoot->TextPrint({ 2, 15 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "CPU Speed(EFI_TIMESTAMP_PROTOCOL): %s", gstrTIMESTAMP_PROTOCOL);
 		if (0 != strncmp(gstrTIMESTAMP_PROTOCOL, "N/A", strlen("N/A")))
-			pRoot->TextPrint({ 2, 17 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "    EFI_TIMESTAMP_PROTOCOL drift : %llds per day", gTIMESTAMP_PROTOCOLSecDriftPerDay);
+			pRoot->TextPrint({ 2, 16 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "    EFI_TIMESTAMP_PROTOCOL drift : %llds per day", gTIMESTAMP_PROTOCOLSecDriftPerDay);
+		else
+			pRoot->TextPrint({ 2, 16 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "    EFI_TIMESTAMP_PROTOCOL drift : N/A");
+
+		pRoot->TextPrint({ 2, 17 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "          RTC vs CPU clock drift : %lld.%llds per day",
+			gRTCvsCPUSecDriftPer100Day / 100,
+			gRTCvsCPUSecDriftPer100Day / 10 - (gRTCvsCPUSecDriftPer100Day / 100) * 10);
 
 		pRoot->TextPrint({ 2, 19 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "target .XLSX                     : %s", gCfgStr_File_SaveAs);
 		pRoot->TextPrint({ 2, 20 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "Calibration Method               : %s", gCfgStr_CalibrMethod);
@@ -1756,7 +1768,6 @@ int main(int argc, char** argv)
 	{
 		int SECONDS = gnCfgRefSyncTime;
 		int64_t qwTSCEnd = 0 , qwTSCStart = 0;
-		int sec = 1 + SECONDS;
 
 		//
 		// wait UP (update ended) interrupt flag to start on time https://www.nxp.com/docs/en/data-sheet/MC146818.pdf#page=16
@@ -1766,6 +1777,10 @@ int main(int argc, char** argv)
 
 		_disable();
 
+		//
+		// RTC calibration
+		//
+
 		_outp(0x70, 0x0A);										// RTC Register A
 
 		while (0 == (0x80 & _inp(0x71)))
@@ -1774,32 +1789,23 @@ int main(int argc, char** argv)
 			;
 		qwTSCStart = __rdtsc();									// get start TSC at falling edge
 
-
-		for (int i = 0; i < 1; i++)
+		for (int i = 0; i < SECONDS; i++)
 		{
-			if (1 == gfCfgSyncRef012) {
-				sec = 1 + SECONDS;
-
-				for (int i = 0; i < SECONDS; i++)
-				{
-					while (0 == (0x80 & _inp(0x71)))
-						;
-					while (0 != (0x80 & _inp(0x71)))					// wait for second falling edge
-						;
-				}
-				qwTSCEnd = __rdtsc();									// get end TSC
-			}
-			else if (0 == gfCfgSyncRef012) {
-				qwTSCEnd += AcpiClkWait(SECONDS * 3579543);				// this function returns the diff
-				qwTSCStart = 0;											// clear start
-			} else if (2 == gfCfgSyncRef012) {
-				qwTSCEnd += PITClkWait(SECONDS * 3579543);				// this function returns the diff
-				qwTSCStart = 0;											// clear start
-			}//if (gfCfgRefSyncRTC) {
+			while (0 == (0x80 & _inp(0x71)))
+				;
+			while (0 != (0x80 & _inp(0x71)))					// wait for second falling edge
+				;
 		}
+		qwTSCEnd = __rdtsc();									// get end TSC
+		gTSCPerSecRTC = (int64_t)((qwTSCEnd - qwTSCStart) / SECONDS);
 
-		gTSCPerSecondReference = (int64_t)((qwTSCEnd - qwTSCStart) / SECONDS);
-		
+		//
+		// ACPI calibration
+		//
+		qwTSCEnd = AcpiClkWait(SECONDS * 3579543);				// this function returns the diff
+
+		gTSCPerSecACPI = (int64_t)((qwTSCEnd) / SECONDS);
+		gTSCPerSecACPIRnd = gTSCPerSecACPI;
 		//
 		// crystalRND: crystal frequency rounding
 		//
@@ -1844,7 +1850,7 @@ int main(int argc, char** argv)
 				{
 					int count = 0;
 					int64_t ll, digit;
-					for (ll = gTSCPerSecondReference / 10000, digit = ll % 10; 1000 < ll; ll /= 10)
+					for (ll = gTSCPerSecACPI / 10000, digit = ll % 10; 1000 < ll; ll /= 10)
 					{
 						int64_t nextdgt = (ll % 100) / 10;
 						digit = ll % 10;
@@ -1859,13 +1865,13 @@ int main(int argc, char** argv)
 
 					if (2 == count)
 					{
-						ll = (gTSCPerSecondReference / 10000) * 10000;
+						ll = (gTSCPerSecACPI / 10000) * 10000;
 						ll += 1111 * digit;
 						
 						if (9 == ll % 10)					// adjust X.YZ9999999 by 1
 							ll += 1;
 
-						gTSCPerSecondRefRND = ll;
+						gTSCPerSecACPIRnd = ll;
 						break;
 					}
 				}
@@ -1875,8 +1881,8 @@ int main(int argc, char** argv)
 				//
 				if (1)
 				{
-					int64_t gigamegarange = (gTSCPerSecondReference / 1000000) * 1000000;
-					int64_t kilorange3dgt = ((gTSCPerSecondReference / 1000) * 1000 - gigamegarange) / 1000;
+					int64_t gigamegarange = (gTSCPerSecACPI / 1000000) * 1000000;
+					int64_t kilorange3dgt = ((gTSCPerSecACPI / 1000) * 1000 - gigamegarange) / 1000;
 					int64_t kiloRND = kilorange3dgt;
 					int d, digit, diff, x;
 
@@ -1892,7 +1898,7 @@ int main(int argc, char** argv)
 
 					diff = abs((int)(kiloRND - kilorange3dgt));
 
-					gTSCPerSecondRefRND = gigamegarange + kiloRND * 1000;
+					gTSCPerSecACPIRnd = gigamegarange + kiloRND * 1000;
 					if (diff < 20)
 						break;
 				}
@@ -1902,8 +1908,8 @@ int main(int argc, char** argv)
 				//
 				if (1)
 				{
-					int64_t gigamega100krange = (gTSCPerSecondReference / 100000) * 100000;
-					int64_t kilorange2dgt = ((gTSCPerSecondReference / 1000) * 1000 - gigamega100krange) / 1000;
+					int64_t gigamega100krange = (gTSCPerSecACPI / 100000) * 100000;
+					int64_t kilorange2dgt = ((gTSCPerSecACPI / 1000) * 1000 - gigamega100krange) / 1000;
 					int64_t kiloRND = kilorange2dgt;
 					int d, digit, diff, x;
 
@@ -1919,11 +1925,11 @@ int main(int argc, char** argv)
 
 					diff = abs((int)(kiloRND - kilorange2dgt));
 
-					gTSCPerSecondRefRND = (gTSCPerSecondReference / 1000) * 1000;
+					gTSCPerSecACPIRnd = (gTSCPerSecACPI / 1000) * 1000;
 
 					if (diff < 5)
 					{
-						gTSCPerSecondRefRND = gigamega100krange + kiloRND * 1000;
+						gTSCPerSecACPIRnd = gigamega100krange + kiloRND * 1000;
 						break;
 					}
 				}
@@ -1933,8 +1939,8 @@ int main(int argc, char** argv)
 				//
 				if (1)
 				{
-					int64_t gigamega10krange = (gTSCPerSecondReference / 10000) * 10000;//4 zeros
-					int64_t kilorange1dgt = ((gTSCPerSecondReference / 1000) * 1000 - gigamega10krange) / 1000;
+					int64_t gigamega10krange = (gTSCPerSecACPI / 10000) * 10000;//4 zeros
+					int64_t kilorange1dgt = ((gTSCPerSecACPI / 1000) * 1000 - gigamega10krange) / 1000;
 					int64_t kiloRND = kilorange1dgt;
 					int d, digit, diff, x;
 
@@ -1950,20 +1956,24 @@ int main(int argc, char** argv)
 
 					diff = abs((int)(kiloRND - kilorange1dgt));
 
-					gTSCPerSecondRefRND = (gTSCPerSecondReference / 1000) * 1000;
+					gTSCPerSecACPIRnd = (gTSCPerSecACPI / 1000) * 1000;
 
 					if (diff < 2)
 					{
-						gTSCPerSecondRefRND = gigamega10krange + kiloRND * 1000;
+						gTSCPerSecACPIRnd = gigamega10krange + kiloRND * 1000;
 						break;
 					}
 				}
 			} while (0);
 		}
 
-		sprintf(gstrCPUSpeed, "%lldHz", gTSCPerSecondReference);
-		sprintf(gstrCPUSpeedRND, "%lldHz", gTSCPerSecondRefRND);
-        
+		sprintf(gstrCPUSpeedRTC, "%lldHz", gTSCPerSecRTC);
+		sprintf(gstrCPUSpeedACPI, "%lldHz", gTSCPerSecACPI);
+		sprintf(gstrCPUSpeedRND, "%lldHz", gTSCPerSecACPIRnd);
+		
+		//
+		// TIMESTAMP_PROTOCOL Seconds Drift Per Day 
+		//
         if (1)
 		{
 			//int64_t gTSCPerDayReference = (int64_t)(86400 * (qwTSCEnd - qwTSCStart) / SECONDS);
@@ -1972,9 +1982,23 @@ int main(int argc, char** argv)
 				gTIMESTAMP_PROTOCOLSecDriftPerDay = --------------------------------- - 86400
 				                                             gTSCPerDayReference
 			*/
-			gTIMESTAMP_PROTOCOLSecDriftPerDay = ((gTIMESTAMP_PROTOCOLPerSec * 86400) / gTSCPerSecondReference) - 86400;
+			gTIMESTAMP_PROTOCOLSecDriftPerDay = ((gTIMESTAMP_PROTOCOLPerSec * 86400) / gTSCPerSecACPI) - 86400;
 		}
-		
+
+		//
+		// RTC vs CPU clock Seconds Drift Per Day 
+		//
+		if (1)
+		{
+			int64_t max, min;
+			if(gTSCPerSecRTC > gTSCPerSecACPI)
+				max = gTSCPerSecRTC, min = gTSCPerSecACPI;
+			else
+				min = gTSCPerSecRTC, max = gTSCPerSecACPI;
+
+			gRTCvsCPUSecDriftPer100Day = ((max * 8640000) / min) - 8640000;
+		}
+
 
 		printf("%s sync base: diff %lld\n", 2 == gfCfgSyncRef012 ? "i8254" : (1 == gfCfgSyncRef012 ? "RTC" : "ACPI"), (qwTSCEnd - qwTSCStart) / SECONDS);
 	}
@@ -2126,27 +2150,34 @@ int main(int argc, char** argv)
 		// 
 		FullScreen.TextPrint({ 2, 2 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK,  "ACPI OemId                       : %s", gstrACPIOemId);
 		FullScreen.TextPrint({ 2, 3 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK,  "ACPI OemTableId                  : %s", gstrACPIOemTableId);
-		FullScreen.TextPrint({ 2, 4 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK,  "ACPI Timer Address               : %s", gstrACPIPmTmrBlkAddr);
-		FullScreen.TextPrint({ 2, 5 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK,  "ACPI Timer Size                  : %s", gACPIPmTmrBlkSize);
-		FullScreen.TextPrint({ 2, 6 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK,  "ACPI PCIEBase                    : %s", gACPIPCIEBase);
+		FullScreen.TextPrint({ 2, 4 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK,  "ACPI Timer I/O Address           : %s", gstrACPIPmTmrBlkAddr);
+		//FullScreen.TextPrint({ 2, 5 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK,  "ACPI Timer Size                  : %s", gACPIPmTmrBlkSize);
+		FullScreen.TextPrint({ 2, 5 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK,  "ACPI PCIEBase                    : %s", gACPIPCIEBase);
 
-		FullScreen.TextPrint({ 2,  8 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "Vendor CPUID                     : %s", gstrCPUID0);
-		FullScreen.TextPrint({ 2,  9 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "HostBridge VID:DID               : %02X:%02X",
+		FullScreen.TextPrint({ 2,  7 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "Vendor CPUID                     : %s", gstrCPUID0);
+		FullScreen.TextPrint({ 2,  8 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "HostBridge VID:DID               : %02X:%02X",
 			((uint16_t*)pMCFG->BaseAddress)[0],
 			((uint16_t*)pMCFG->BaseAddress)[1]
 		);
-		FullScreen.TextPrint({ 2, 10 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "CPUID Signature                  : %s", gstrCPUIDSig);
-		FullScreen.TextPrint({ 2, 11 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "CPU Speed(measured)              : %s", gstrCPUSpeed);
-		FullScreen.TextPrint({ 2, 12 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "CPU Speed(rounded)               : %s", gstrCPUSpeedRND);
+		FullScreen.TextPrint({ 2,  9 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "CPUID Signature                  : %s", gstrCPUIDSig);
+		FullScreen.TextPrint({ 2, 10 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "CPU Speed(reference timer RTC)   : %s", gstrCPUSpeedRTC);
+		FullScreen.TextPrint({ 2, 11 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "CPU Speed(reference timer ACPI)  : %s", gstrCPUSpeedACPI);
+		FullScreen.TextPrint({ 2, 12 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "CPU Speed(rounded ACPI)          : %s", gstrCPUSpeedRND);
 		FullScreen.TextPrint({ 2, 13 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "CPU Speed(CPUID 15)              : %s", gstrCPUIDSpeed);
 		FullScreen.TextPrint({ 2, 14 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "CPU Speed(MSR 0xCE)              : %s", gstrCPUPLATFORM_INFOSpeed);
 		FullScreen.TextPrint({ 2, 15 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "CPU Speed(EFI_TIMESTAMP_PROTOCOL): %s", gstrTIMESTAMP_PROTOCOL);
 		if (0 != strncmp(gstrTIMESTAMP_PROTOCOL, "N/A", strlen("N/A")))
 			FullScreen.TextPrint({ 2, 16 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "    EFI_TIMESTAMP_PROTOCOL drift : %llds per day", gTIMESTAMP_PROTOCOLSecDriftPerDay);
+		else
+			FullScreen.TextPrint({ 2, 16 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "    EFI_TIMESTAMP_PROTOCOL drift : N/A");
+		
+		FullScreen.TextPrint({ 2, 17 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "          RTC vs CPU clock drift : %lld.%llds per day",
+				gRTCvsCPUSecDriftPer100Day/100,
+				gRTCvsCPUSecDriftPer100Day/10 - (gRTCvsCPUSecDriftPer100Day/100) * 10);
 
-		FullScreen.TextPrint({ 2, 18 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "target .XLSX                     : %s", gCfgStr_File_SaveAs);
-		FullScreen.TextPrint({ 2, 19 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "Calibration Method               : %s", gCfgStr_CalibrMethod);
-        FullScreen.TextPrint({ 2, 20 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "Error correction                 : %s", 0 == gfErrorCorrection ? "disabled" : (pfnDelay == &InternalAcpiDelay ? "N/A on TIANOCORE" : "enabled"));
+		FullScreen.TextPrint({ 2, 19 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "target .XLSX                     : %s", gCfgStr_File_SaveAs);
+		FullScreen.TextPrint({ 2, 20 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "Calibration Method               : %s", gCfgStr_CalibrMethod);
+        FullScreen.TextPrint({ 2, 21 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "Error correction                 : %s", 0 == gfErrorCorrection ? "disabled" : (pfnDelay == &InternalAcpiDelay ? "N/A on TIANOCORE" : "enabled"));
 		
 		
 		if (true == gfAutoRun)
@@ -2449,7 +2480,7 @@ int main(int argc, char** argv)
 						}
 					}//while(1)
 
-					if (gfRunDriftTest)
+					if(gfRunDriftTest) do
 					{ 
 						CDE_APP_IF* pCdeAppIf = (CDE_APP_IF*)__cdeGetAppIf();						// get access to CdePkg internally
 						time_t RTCtime64=time(NULL);												// pre-initialize RTC time with Date from Standard C Time
@@ -2488,7 +2519,7 @@ int main(int argc, char** argv)
 						{
 
 
-							FullScreen.TextBlockDraw({ 2,8 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "              bare metal RTC time: %02X:%02X:%02X",
+							FullScreen.TextBlockDraw({ 2,8 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "            bare metal RTC time: %02X:%02X:%02X",
 								bcdhour,	// RTC hour 
 								bcdmin,		// RTC minute
 								bcdsec		// RTC seconds
@@ -2504,60 +2535,80 @@ int main(int argc, char** argv)
 
 							struct tm* ptm = localtime(&time64);
 
-							FullScreen.TextBlockDraw({ 2,10 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "   toro C Library Standard C time: %02d:%02d:%02d, %3dsec diff",
+							FullScreen.TextBlockDraw({ 2,10 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, " toro C Library Standard C time: %02d:%02d:%02d, %6dsec diff, @ %lldHz",
 								ptm->tm_hour,
 								ptm->tm_min,
 								ptm->tm_sec,
-								(int)difftime(time64, RTCtime64)
+								(int)difftime(time64, RTCtime64),
+								pCdeAppIf->pCdeServices->TSClocksPerSec
 							);
 						}
-
+						double TSC = (double)pCdeAppIf->pCdeServices->pGetTsc(pCdeAppIf);
+						double STA = (double)gTSCAtSystemStart;
 						//
 						// TIMESTAMP_PROTOCOL drifted time
 						//
 						if (gTIMESTAMP_PROTOCOLPerSec)
 						{
-							double TSC = (double)pCdeAppIf->pCdeServices->pGetTsc(pCdeAppIf);
-							double STA = (double)gTSCAtSystemStart;
 							double TSCFRQ = (double)gTIMESTAMP_PROTOCOLPerSec;
-							double DriftSecSinceStart = (TSC - STA) * TSCFRQ / (gTSCPerSecondRefRND * gTSCPerSecondRefRND);
+							double DriftSecSinceStart = (TSC - STA) * TSCFRQ / (gTSCPerSecACPIRnd * gTSCPerSecACPIRnd);
 							time_t drift = gTimeAtSystemStart + (time_t)DriftSecSinceStart;
 							struct tm* ptm = localtime(&drift);
 							time_t time64 = mktime(ptm);
 
-							FullScreen.TextBlockDraw({ 2,12 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "  TIMESTAMP_PROTOCOL drifted time: %02d:%02d:%02d, %3dsec diff",
+							FullScreen.TextBlockDraw({ 2,12 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "TIMESTAMP_PROTOCOL drifted time: %02d:%02d:%02d, %6dsec diff, @ %lldHz",
 								ptm->tm_hour,
 								ptm->tm_min,
 								ptm->tm_sec,
-								(int)difftime(time64, RTCtime64)
+								(int)difftime(time64, RTCtime64),
+								gTIMESTAMP_PROTOCOLPerSec
 							);
 						}else
-							FullScreen.TextBlockDraw({ 2,12 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "  TIMESTAMP_PROTOCOL drifted time: N/A");
+							FullScreen.TextBlockDraw({ 2,12 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "TIMESTAMP_PROTOCOL drifted time: N/A");
 
 
 
 						//
-						// TSCSYNC high precision TSC Per Second Referece Rounded
+						// TSCSYNC high precision TSC on ACPI Per Second Referece Rounded
 						//
 						if (1)
 						{
-							double TSC = (double)pCdeAppIf->pCdeServices->pGetTsc(pCdeAppIf);
-							double STA = (double)gTSCAtSystemStart;
-							double TSCFRQ = (double)gTSCPerSecondRefRND;
-							double DriftSecSinceStart = (TSC - STA) * TSCFRQ / (gTSCPerSecondRefRND * gTSCPerSecondRefRND);
+							double TSCFRQ = (double)gTSCPerSecACPIRnd;
+							double DriftSecSinceStart = (TSC - STA) / gTSCPerSecACPIRnd;
 							time_t drift = gTimeAtSystemStart + (time_t)DriftSecSinceStart;
 							struct tm* ptm = localtime(&drift);
 							time_t time64 = mktime(ptm);
 
-							FullScreen.TextBlockDraw({ 2,14 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "  TSCSYNC high precision ref time: %02d:%02d:%02d, %3dsec diff",
+							FullScreen.TextBlockDraw({ 2,14 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "TSCSYNC ACPI precision ref time: %02d:%02d:%02d, %6dsec diff, @ %lldHz",
 								ptm->tm_hour,
 								ptm->tm_min,
 								ptm->tm_sec,
-								(int)difftime(time64, RTCtime64)
+								(int)difftime(time64, RTCtime64),
+								gTSCPerSecACPIRnd
 							);
 						}
 
-					}//if (gfRunDriftTest)
+						//
+						// TSCSYNC high precision TSC on RTC Per Second Referece Rounded
+						//
+						if (1)
+						{
+							double TSCFRQ = (double)gTSCPerSecRTC;
+							double DriftSecSinceStart = (TSC - STA) / gTSCPerSecRTC;
+							time_t drift = gTimeAtSystemStart + (time_t)DriftSecSinceStart;
+							struct tm* ptm = localtime(&drift);
+							time_t time64 = mktime(ptm);
+
+							FullScreen.TextBlockDraw({ 2,16 }, EFI_BACKGROUND_LIGHTGRAY | EFI_BLACK, "TSCSYNC  RTC precision ref time: %02d:%02d:%02d, %6dsec diff, @ %lldHz",
+								ptm->tm_hour,
+								ptm->tm_min,
+								ptm->tm_sec,
+								(int)difftime(time64, RTCtime64),
+								gTSCPerSecRTC
+							);
+						}
+
+					}while (0);//if do (gfRunDriftTest)
 
 					if (gfRunConfig)
 					{
@@ -2674,7 +2725,7 @@ int main(int argc, char** argv)
 									for (int j = 0; j < cntSamples; j++)
 									{
 										int64_t dblTSC = parms[i].rgDiffTSC[j];
-										double dblScaled2EntireDay = ((double)((dblTSC * parms[i].qwMultiplierToOneSecond - gTSCPerSecondReference) * 86400)) / (double)gTSCPerSecondReference;
+										double dblScaled2EntireDay = ((double)((dblTSC * parms[i].qwMultiplierToOneSecond - gTSCPerSecACPI) * 86400)) / (double)gTSCPerSecACPI;
 
 										parms[i].rgDriftSecPerDay[j] = (double)dblScaled2EntireDay;
 									}
