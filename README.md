@@ -55,6 +55,8 @@ This mode was made available to enable repeated .NSH/batch controlled
 Just watch the video: https://www.youtube.com/watch?v=hjeykqZqekc&t=27s
 
 ## Revision history
+### 202504012, v1.3.2 Build 82
+* update to [**toro C Library v0.9.1 Build 267**](https://github.com/KilianKegel/Visual-TORO-C-LIBRARY-for-UEFI)
 ### 20240406, v1.3.1 Build 79
 * distinguish RTC and ACPI based frequency detection
 	* NOTE: ACPI frequency lacks precision as long term time base

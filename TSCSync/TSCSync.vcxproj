@@ -75,7 +75,7 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='EFIApp|x64'">
     <TargetExt>.efi</TargetExt>
     <GenerateManifest>false</GenerateManifest>
-    <PostBuildEventUseInBuild>false</PostBuildEventUseInBuild>
+    <PostBuildEventUseInBuild>true</PostBuildEventUseInBuild>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='WINApp|x64'">
     <TargetExt>.exe</TargetExt>
@@ -150,10 +150,10 @@
       <AdditionalDependencies>toroC64.lib;$(SolutionDir)lib\LibWin324UEFI.lib;$(SolutionDir)lib\zlibstat.lib;$(SolutionDir)lib\libxlsxwriter.lib;$(SolutionDir)lib\minizip.lib;$(SolutionDir)lib\tmpfileplus.lib;$(SolutionDir)lib\md5.lib</AdditionalDependencies>
     </Link>
     <PostBuildEvent>
-      <Command>copy /y "$(OutDir)$(TargetName)$(TargetExt)" e:\</Command>
+      <Command>IF DEFINED MYUSBSHARE copy /y "$(OutDir)$(TargetName)$(TargetExt)" $(MYUSBSHARE)</Command>
     </PostBuildEvent>
     <PostBuildEvent>
-      <Message>copy /y "$(OutDir)$(TargetName)$(TargetExt)" e:\</Message>
+      <Message>copy /y "$(OutDir)$(TargetName)$(TargetExt)" $(MYUSBSHARE)</Message>
     </PostBuildEvent>
     <PreBuildEvent>
       <Command>BUILDNUM.BAT</Command>
