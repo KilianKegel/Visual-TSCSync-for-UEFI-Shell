@@ -55,6 +55,8 @@ This mode was made available to enable repeated .NSH/batch controlled
 Just watch the video: https://www.youtube.com/watch?v=hjeykqZqekc&t=27s
 
 ## Revision history
+### 20250906, v1.3.3 Build 94
+* update to [**toro C Library v0.9.6 Build 757**](https://github.com/KilianKegel/Visual-TORO-C-LIBRARY-for-UEFI)
 ### 20250727, v1.3.2 Build 89
 * update to [**toro C Library v0.9.4 Build 672**](https://github.com/KilianKegel/Visual-TORO-C-LIBRARY-for-UEFI)
 * update to [**Visual-LIBXLSXWRITER-for-UEFI-Shell 20250726**](https://github.com/KilianKegel/Visual-LIBXLSXWRITER-for-UEFI-Shell)
